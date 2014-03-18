@@ -1,4 +1,4 @@
-# Neo4j (CSV) New Batch Importer 
+# Neo4j (CSV) New Batch Importer
 
 This software is licensed under the [GPLv3](http://www.gnu.org/licenses/gpl-3.0.en.html) for now. 
 You can ask [Neo Technology](http://neotechnology.com) about a different licensing agreement.
@@ -17,7 +17,7 @@ __Works with Neo4j 2.0.0__
 To simply use it (no source/git/maven required):
 * [download zip](https://www.dropbox.com/s/8slwsyxmw1blp3q/batch-import-20.zip)
 * unzip
-* run `import.sh test.db nodes.csv rels.csv` (on Windows: `import.bat`)
+* run `importNew.sh test.db nodes.csv rels.csv` (on Windows: `importNew.bat`)
 
 You provide one **tab separated** csv file for nodes and one for relationships (optionally more for indexes)
 
@@ -43,7 +43,7 @@ Example data for the files is a small family network
 
 ## Examples
 
-There is also a `sample` directory, please run from the main directory `./import.sh test.db sample/nodes.csv sample/rels.csv`
+There is also a `sample` directory, please run from the main directory `./importNew.sh test.db sample/nodes.csv sample/rels.csv`
 
 ### nodes.csv
 
@@ -67,16 +67,16 @@ Note that the node-id references are numbered from 0 (since Neo4j 2.0)
 
 ## Execution
 
-Just use the provided shell script `import.sh` or `import.bat` on Windows
+Just use the provided shell script `importNew.sh` or `importNew.bat` on Windows
 
-    import.sh test.db nodes.csv rels.csv
+    importNew.sh test.db nodes.csv rels.csv
 
 
 ### For Developers
 
 If you want to work on the code and run the importer after making changes:
 
-    mvn clean compile exec:java -Dexec.mainClass="org.neo4j.batchimport.Importer" -Dexec.args="neo4j/data/graph.db nodes.csv rels.csv"
+    mvn clean compile exec:java -Dexec.mainClass="org.neo4j.batchimport.NewImporter" -Dexec.args="neo4j/data/graph.db nodes.csv rels.csv"
     
     or
     
@@ -208,7 +208,7 @@ rel_index worked exact rels_index.csv
 Example command line:
 
 ````
-./import.sh test.db nodes.csv rels.csv node_index users fulltext nodes_index.csv rel_index worked exact rels_index.csv
+./importNew.sh test.db nodes.csv rels.csv node_index users fulltext nodes_index.csv rel_index worked exact rels_index.csv
 ````         
 
 ### Using Neo4j's Automatic Indexing
