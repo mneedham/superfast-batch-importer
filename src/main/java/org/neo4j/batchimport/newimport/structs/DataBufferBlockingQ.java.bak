@@ -1,0 +1,256 @@
+package org.neo4j.batchimport.newimport.structs;
+
+import java.util.Iterator;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+import org.neo4j.batchimport.newimport.utils.Utils;
+
+public class DataBufferBlockingQ<DataBufferType>{
+		private ArrayBlockingQueue<DataBufferType>[] blockingQ;
+		private boolean[] isSingleThreaded;
+		private int[] threadCount;
+		private int[] threadAssignment;
+		private int maxThreads;
+		private boolean[] lastBuffer;
+		private int roundRobinIndex = 0;
+		private int[] bufOrder = null;
+		private int curSize;
+		public DataBufferBlockingQ(int size, int capacity, int maxThreads) {
+			blockingQ = new ArrayBlockingQueue[size];
+			isSingleThreaded = new boolean[size];
+			lastBuffer = new boolean[size];
+			threadCount = new int[size];
+			bufOrder = new int[size];
+			curSize = size;
+			for (int i = 0; i < size; i++){
+				blockingQ[i] = new ArrayBlockingQueue<DataBufferType>(capacity);
+				isSingleThreaded[i] = false;
+				threadCount[i] = 0;
+				bufOrder[i] = -1;
+				lastBuffer[i] = false;
+			}
+			this.maxThreads = maxThreads;
+			threadAssignment = new int[maxThreads];
+			for (int i = 0; i < maxThreads; i++)
+				threadAssignment[i] = -1;
+		}
+		public int getThreadCount(int stage){
+			return threadCount[stage];
+		}
+		public boolean isSingleThreaded(int index){
+			return isSingleThreaded[index];
+		}
+		public void setSingleThreaded(int index, boolean type){
+			isSingleThreaded[index] = type;
+		}
+		public void reset(){
+			for (int i = 0; i < curSize; i++){
+				threadCount[i] = 0;
+				bufOrder[i] = -1;
+				lastBuffer[i] = false;
+			}
+			for (int i = 0; i < maxThreads; i++)
+				threadAssignment[i] = -1;
+		}
+		public ArrayBlockingQueue<DataBufferType> getQ(int index){
+			return blockingQ[index];
+		}
+		public int getLength(){
+			return blockingQ.length;
+		}
+		private synchronized int countDown(int qIndex){
+			threadCount[qIndex]--;
+			return threadCount[qIndex];
+		}
+		private synchronized boolean countUp(int qIndex, int max){
+			if (maxThreads != -1 && this.threadCount[qIndex] >= max)
+				return false;		
+			this.threadCount[qIndex]++;
+			return true;
+		}
+		private  int findQ(){
+			int max = 0;
+			int index = -1;
+			for (int i = 0; i < blockingQ.length; i++){
+				if (isSingleThreaded[i] || lastBuffer[i])
+					continue;
+				if (threadCount[i] == 0 && countUp(i, 1)){	
+					return i;
+				}
+				if (blockingQ[i].size() >= max && threadCount[i] < maxThreads/2){
+					max = blockingQ[i].size();
+					index = i;
+				}
+			}
+			if (index == -1){
+				for (int i = 0;  i < blockingQ.length; i++){
+				 if ((isSingleThreaded[roundRobinIndex] && threadCount[roundRobinIndex] > 0) || lastBuffer[roundRobinIndex] )
+					 roundRobinIndex = roundRobinIndex++ % blockingQ.length;
+				 else{
+					 index = roundRobinIndex;
+					 roundRobinIndex = roundRobinIndex++ % blockingQ.length;
+					 break;
+				 }
+				}
+			}
+			if (index != -1)
+				countUp(index, -1);
+			return index;
+		}
+		public boolean sequencedBuffers(int qIndex){
+			if (qIndex < 1)
+				return false;
+			if (isSingleThreaded(qIndex) && !isSingleThreaded(qIndex-1))
+				return true;
+			return false;
+		}
+		
+		public DataBufferType getBuffer(int curQ) throws InterruptedException{
+			int qIndex = -1;
+			if (curQ == -1){
+				for (int i = 0; i < blockingQ.length; i++)
+					if (isSingleThreaded[i] && threadCount[i] == 0 && countUp(i, 1)){
+								curQ = i;
+								break;
+						}
+				if (curQ == -1)
+					for (int i = 0; i < blockingQ.length; i++)
+						if (!isSingleThreaded[i]){
+							curQ = i;
+							break;
+						}
+				if (curQ == -1)
+					return null;
+			}
+			if (isSingleThreaded[curQ])
+				qIndex = curQ;
+			else
+				qIndex = findQ();
+			if (qIndex == -1)
+				return null;
+			ArrayBlockingQueue<DataBufferType> bufferQ = blockingQ[qIndex];
+			DataBufferType buffer = null;
+			if (isSingleThreaded[qIndex]){
+				while (buffer == null && !lastBuffer[qIndex]){
+					if (sequencedBuffers(qIndex)){
+						if (bufferQ.peek() != null){
+							if (((AbstractDataBuffer)bufferQ.peek()).getBufSequenceId() == bufOrder[qIndex]+1){
+								buffer = bufferQ.take();
+								if (buffer != null)
+									bufOrder[qIndex] = ((AbstractDataBuffer)buffer).getBufSequenceId();
+								break;
+							} else {
+								Iterator<DataBufferType> it = bufferQ.iterator();
+								while (it.hasNext()){
+									buffer = (DataBufferType)it.next();
+									if (((AbstractDataBuffer)buffer).getBufSequenceId() == bufOrder[qIndex]+1){
+										bufferQ.remove(buffer);
+										bufOrder[qIndex] = ((AbstractDataBuffer)buffer).getBufSequenceId();
+										break;
+									}
+									buffer = null;
+								}
+							}
+						}
+						if (buffer == null)
+							Thread.sleep(50);
+					} else
+						buffer = blockingQ[qIndex].poll(100, TimeUnit.MILLISECONDS);								
+				}
+			} else
+				buffer = blockingQ[qIndex].poll(500, TimeUnit.MILLISECONDS);		
+			if (buffer == null)
+					countDown(qIndex);
+			else
+				((AbstractDataBuffer)buffer).setStageIndex(qIndex);
+			
+			return buffer;
+		}
+		private DataBufferType getBufferSingle(int qIndex) throws InterruptedException{
+			DataBufferType buffer = null;
+			ArrayBlockingQueue<DataBufferType> bufferQ = blockingQ[qIndex];
+			while (buffer == null && !lastBuffer[qIndex]){
+				if (sequencedBuffers(qIndex)){
+					if (bufferQ.peek() != null){
+						if (((AbstractDataBuffer)bufferQ.peek()).getBufSequenceId() == bufOrder[qIndex]+1){
+							buffer = bufferQ.take();
+							if (buffer != null)
+								bufOrder[qIndex] = ((AbstractDataBuffer)buffer).getBufSequenceId();
+							break;
+						} else {
+							Iterator<DataBufferType> it = bufferQ.iterator();
+							while (it.hasNext()){
+								buffer = (DataBufferType)it.next();
+								if (((AbstractDataBuffer)buffer).getBufSequenceId() == bufOrder[qIndex]+1){
+									bufferQ.remove(buffer);
+									bufOrder[qIndex] = ((AbstractDataBuffer)buffer).getBufSequenceId();
+									break;
+								}
+								buffer = null;
+							}
+						}
+					}
+					if (buffer == null)
+						Thread.sleep(100);
+				} else
+					buffer = blockingQ[qIndex].poll(100, TimeUnit.MILLISECONDS);								
+			}
+			return buffer;
+		}
+		private  int findQMax(){
+			int max = 0;
+			int index = -1;
+			for (int i = 0; i < blockingQ.length; i++){
+				if (isSingleThreaded[i] || lastBuffer[i])
+					continue;
+				if (blockingQ[i].size() >= max){
+					max = blockingQ[i].size();
+					index = i;
+				}
+			}
+			if (index != -1)
+				countUp(index, -1);
+			return index;
+		}
+		private DataBufferType count(DataBufferType buf, int qIndex, ImportWorker worker){
+			if (buf == null)
+				return buf;
+			((AbstractDataBuffer)buf).setStageIndex(qIndex);
+			threadAssignment[worker.getThreadIndex()] = qIndex;
+			countUp(qIndex, -1);
+			return buf;
+		}
+		public DataBufferType getBuffer(int curQ, ImportWorker worker) throws InterruptedException{
+			int qIndex = -1;
+			threadAssignment[worker.getThreadIndex()] = -1;
+			DataBufferType buffer = null;
+			if (worker.isPinned()){
+				qIndex = worker.getStageIndex();
+				if (isSingleThreaded[qIndex])
+					return count(getBufferSingle(qIndex), qIndex, worker);
+				while (buffer == null && !lastBuffer[qIndex])
+					buffer = blockingQ[qIndex].poll(500, TimeUnit.MILLISECONDS);
+				return count(buffer, qIndex, worker);
+			}
+			qIndex = findQMax();			
+			if (qIndex == -1)
+				return null;
+			buffer = blockingQ[qIndex].poll(500, TimeUnit.MILLISECONDS);
+			return count(buffer, qIndex, worker);
+		}
+		public DataBufferType putBuffer(DataBufferType buf)throws InterruptedException{		
+			int curQ = ((AbstractDataBuffer)buf).getStageIndex();
+			int nextQ = (((AbstractDataBuffer)buf).getStageIndex()+1) % blockingQ.length;
+			if (!((AbstractDataBuffer)buf).moreData())
+				lastBuffer[curQ] = true;
+			((AbstractDataBuffer)buf).setStageIndex( 0 );
+			if (((AbstractDataBuffer)buf).getCurEntries() > 0)
+				blockingQ[nextQ].put(buf);
+			else
+				blockingQ[curQ].put(buf);
+			if (!isSingleThreaded[curQ])
+				countDown(curQ);
+			return null;
+		}
+}
