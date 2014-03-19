@@ -49,7 +49,7 @@ public class StageMethods {
 					else			
 						buf.setId(index, batchInserter.getNeoStore().getNodeStore().nextId());
 				newBatchImporter.createNodeRecords(buf);
-				newBatchImporter.setPropIds(buf, false);
+				newBatchImporter.importEncodeProps(buf);
 			} catch (Exception e){
 				throw new BatchImportException("[ImportNode Stage1 failed]"+e.getMessage());
 			}
@@ -57,7 +57,7 @@ public class StageMethods {
 
 		public void stage2(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
 			try {
-				newBatchImporter.importEncodeProps(buf);
+				newBatchImporter.setPropIds(buf, false);
 				newBatchImporter.importNode_writeStore(buf, false);
 			} catch (Exception e){
 				throw new BatchImportException("[ImportNNode Stage2 failed]"+e.getMessage());

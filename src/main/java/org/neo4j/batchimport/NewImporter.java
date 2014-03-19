@@ -68,7 +68,7 @@ public class NewImporter {
        return (BatchInserterImpl)BatchInserters.inserter(graphDb.getAbsolutePath(), config.getConfigData());
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String... args) throws IOException {
     	startImport= System.currentTimeMillis();
     	System.err.println("New Importer - parallel and scalable");
     	System.err.println("Usage: NewImporter data/dir nodes.csv relationships.csv [node_index node-index-name fulltext|exact nodes_index.csv rel_index rel-index-name fulltext|exact rels_index.csv ....]");

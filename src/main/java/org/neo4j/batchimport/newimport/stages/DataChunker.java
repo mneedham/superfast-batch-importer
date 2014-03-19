@@ -24,7 +24,7 @@ public class DataChunker {
     private char delim = '\t';
     private final char[] buffer=new char[BUFSIZE];
     private int lastChar = PREV_EOL_CHAR;
-    private int pos=BUFSIZE;
+    private int pos=0;
     int sequenceId = 0;
     private boolean seenEOF = false;
     
