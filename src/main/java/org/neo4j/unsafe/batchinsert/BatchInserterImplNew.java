@@ -14,8 +14,11 @@ import org.neo4j.batchimport.newimport.structs.NodesCache;
 import org.neo4j.batchimport.newimport.utils.Utils;
 import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.Label;
+import org.neo4j.helpers.Service;
+import org.neo4j.kernel.DefaultFileSystemAbstraction;
 import org.neo4j.kernel.IdType;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
+import org.neo4j.kernel.extension.KernelExtensionFactory;
 import org.neo4j.kernel.impl.nioneo.store.IdGeneratorImpl;
 
 import org.neo4j.kernel.impl.nioneo.store.NeoStore;
@@ -30,19 +33,16 @@ import org.neo4j.kernel.impl.nioneo.store.RelationshipRecord;
 import org.neo4j.kernel.impl.nioneo.store.RelationshipStore;
 
 
-public class BatchInserterWrapper{
+public class BatchInserterImplNew extends BatchInserterImpl{
 	private static final long MAX_NODE_ID = IdType.NODE.getMaxValue();
-	private BatchInserterImpl batchInserter = null;
 	private ReadFileData dataInput = null;
 	private DiskBlockingQ diskBlockingQ;
 	private NodesCache nodeCache = null;
 	private NeoStore neoStore = null;
-	public BatchInserterWrapper(BatchInserterImpl inserter){
-		batchInserter = inserter;
-		neoStore = inserter.getNeoStore();
-	}
-	public BatchInserterImpl getBatchInserterImpl(){
-		return batchInserter;
+	public BatchInserterImplNew( String storeDir,
+            Map<String, String> stringParams){
+		super(storeDir, new DefaultFileSystemAbstraction(), stringParams, (Iterable) Service.load( KernelExtensionFactory.class ));
+		neoStore = this.getNeoStore();
 	}
 	public void setNodesCache(NodesCache nodesCache){
 		this.nodeCache = nodesCache;
@@ -134,7 +134,7 @@ public class BatchInserterWrapper{
 						Record.NO_NEXT_PROPERTY.intValue() );
 				nodeRecord.setInUse( true );
 				nodeRecord.setCreated();
-				batchInserter.setNodeLabels( nodeRecord, labelsFor(dataInput.getTypeLabels(buf, index)) );
+				this.setNodeLabels( nodeRecord, labelsFor(dataInput.getTypeLabels(buf, index)) );
 				buf.getDiskRecords(Constants.NODE).addRecord(nodeRecord, index);
 			}
 		}catch (Exception e){
@@ -174,10 +174,10 @@ public class BatchInserterWrapper{
 				id = getRelationshipStore().nextId();
 				buf.setId(index, id); 
 				final RelType type = relType.update(buf.getString(index, 2));
-				int typeId = batchInserter.relationshipTypeTokens.idOf( type.name() );
+				int typeId = this.relationshipTypeTokens.idOf( type.name() );
 				if ( typeId == -1 )
 				{
-					typeId = batchInserter.createNewRelationshipType( type.name() );
+					typeId = this.createNewRelationshipType( type.name() );
 				}
 				RelationshipRecord record = new RelationshipRecord( id, 
 						buf.getLong(index, 0), 
@@ -187,7 +187,7 @@ public class BatchInserterWrapper{
 				record.setCreated();
 				buf.getDiskRecords(Constants.RELATIONSHIP).addRecord(record, index);
 			} catch (Exception e){
-				throw new BatchImportException("[importRelationships_createRelationshipRecords]"+e.getMessage());
+				throw new BatchImportException("[importRelationships_createRelationshipRecords failed]"+e.getMessage());
 			}
 		}  	
 	}
@@ -271,9 +271,9 @@ public class BatchInserterWrapper{
 				buf.getDiskRecords(Constants.PROPERTY_BLOCK).clearRecord(index);  		
 				for ( Entry<String, Object> entry : properties.entrySet() )
 				{
-					int keyId = batchInserter.propertyKeyTokens.idOf( entry.getKey() );
+					int keyId = this.propertyKeyTokens.idOf( entry.getKey() );
 					if ( keyId == -1 )
-						keyId = batchInserter.createNewPropertyKeyId( entry.getKey() );		
+						keyId = this.createNewPropertyKeyId( entry.getKey() );		
 					PropertyBlock block = new PropertyBlock();
 					propStore.encodeValue(block, keyId, entry.getValue() );
 					buf.getDiskRecords(Constants.PROPERTY_BLOCK).addRecord(block, index);
@@ -377,7 +377,10 @@ public class BatchInserterWrapper{
 		long maxNodeId = neoStore.getNodeStore().getHighId();
 		long maxRelId = neoStore.getRelationshipStore().getHighId();
 		System.out.println(Utils.memoryStats());
-		nodeCache.clean();
+		if (nodeCache == null)
+			nodeCache = new NodesCache(this.getNeoStore().getNodeStore().getHighId());
+		else
+			nodeCache.clean();
 		System.out.println(Utils.memoryStats());
 		long startLinkBack = prev = System.currentTimeMillis();
 		for (long id = maxRelId-1; id >= 0; id--){

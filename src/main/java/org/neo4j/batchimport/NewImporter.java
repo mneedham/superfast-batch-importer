@@ -10,6 +10,7 @@ import org.neo4j.batchimport.index.MapDbCachingIndexProvider;
 import org.neo4j.batchimport.utils.Config;
 import org.neo4j.batchimport.newimport.stages.*;
 import org.neo4j.batchimport.newimport.structs.*;
+import org.neo4j.batchimport.newimport.structs.Constants.ImportStageState;
 import org.neo4j.batchimport.newimport.utils.Utils;
 import org.neo4j.graphdb.index.IndexManager;
 import org.neo4j.index.lucene.unsafe.batchinsert.LuceneBatchInserterIndexProvider;
@@ -19,7 +20,7 @@ import org.neo4j.unsafe.batchinsert.BatchInserters;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndexProvider;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
 import org.neo4j.unsafe.batchinsert.BatchInserterImpl;
-import org.neo4j.unsafe.batchinsert.BatchInserterWrapper;
+import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 import static org.neo4j.batchimport.Utils.join;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.EXACT_CONFIG;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.FULLTEXT_CONFIG;
@@ -33,16 +34,15 @@ public class NewImporter {
     Map<String,BatchInserterIndex> indexes=new HashMap<String, BatchInserterIndex>();
     private static long startImport = 0;
     
-    private BatchInserterImpl batchInserter;
-    private BatchInserterWrapper db;
+    private BatchInserterImplNew db;
+    private Stages importStages = null;
+    private ImportStageState importStageState = ImportStageState.Uninitialized;
 
     public NewImporter(File graphDb, final Config config) {
         this.config = config;
 		Timestamp ts = new Timestamp(System.currentTimeMillis());
         System.out.println("[Current time:"+ts.toString()+"][Compile Time:"+Utils.getVersionfinal(this.getClass())+"]");
-        batchInserter = createBatchInserter(graphDb, config);
-        db = new BatchInserterWrapper(batchInserter);
-
+        db = createBatchInserter(graphDb, config);
         final boolean luceneOnlyIndex = config.isCachedIndexDisabled();
         indexProvider = createIndexProvider(luceneOnlyIndex);
         Collection<IndexInfo> indexInfos = config.getIndexInfos();
@@ -61,11 +61,11 @@ public class NewImporter {
     }
 
     protected BatchInserterIndexProvider createIndexProvider(boolean luceneOnlyIndex) {
-        return luceneOnlyIndex ? new LuceneBatchInserterIndexProvider(batchInserter) : new MapDbCachingIndexProvider(batchInserter);
+        return luceneOnlyIndex ? new LuceneBatchInserterIndexProvider(db) : new MapDbCachingIndexProvider(db);
     }
 
-    protected BatchInserterImpl createBatchInserter(File graphDb, Config config) {
-       return (BatchInserterImpl)BatchInserters.inserter(graphDb.getAbsolutePath(), config.getConfigData());
+    protected BatchInserterImplNew createBatchInserter(File graphDb, Config config) {
+    	return new BatchInserterImplNew(graphDb.getAbsolutePath(), config.getConfigData());
     }
 
     public static void main(String... args) throws IOException {
@@ -88,18 +88,20 @@ public class NewImporter {
     }
  
     void finish() {
+    	if (this.importStageState != ImportStageState.Exited)
+    		importStageState = importStages.stop();
         indexProvider.shutdown();
-        batchInserter.shutdown();
+        db.shutdown();
         report.finish();
     }
 
-    private LineData createLineData(BufferedReader reader, int offset) {
+    private LineData createLineData(Reader reader, int offset) {
         final boolean useQuotes = config.quotesEnabled();
         if (useQuotes) return new CsvLineData(reader, config.getDelimChar(),offset);
         return new ChunkerLineData(reader, config.getDelimChar(), offset);
     }
 
-    void importIndex(String indexName, BatchInserterIndex index, BufferedReader reader) throws IOException {
+    void importIndex(String indexName, BatchInserterIndex index, Reader reader) throws IOException {
         final LineData data = createLineData(reader, 1);
         report.reset();
         while (data.processLine(null)) {
@@ -135,33 +137,32 @@ public class NewImporter {
             System.err.println("Index file "+indexFile+" does not exist");
             return;
         }
-        importIndex(indexInfo.indexName, indexes.get(indexInfo.indexName), Utils.createFileBufferedReader(indexFile));
+        importIndex(indexInfo.indexName, indexes.get(indexInfo.indexName), Utils.createFileReader(indexFile));
     }
     
     private void report(String header, long prevTime){
-    	 System.out.println(header +(System.currentTimeMillis()- prevTime)/1000+ " secs - ["+Utils.getMaxIds(batchInserter.getNeoStore())+"]");
+    	 System.out.println(header +(System.currentTimeMillis()- prevTime)/1000+ " secs - ["+Utils.getMaxIds(db.getNeoStore())+"]");
     }
     private void doImport() throws IOException {
-    	long prevMilestone = System.currentTimeMillis();
-    	long prevMilestone1 = prevMilestone;
+    	long stepTime = System.currentTimeMillis();
+    	long milestone = stepTime;
     	try {
-    		Stages importStages = setupStagesForNodes();
     		for (File file : config.getNodesFiles()) {
-    			importNew(Utils.createFileBufferedReader(file), importStages);
-    			report("\tNode file ["+file.getName()+"] imported in ", prevMilestone);
-    			prevMilestone = System.currentTimeMillis();
+    			importNodes(Utils.createFileReader(file));
+    			report("\tNode file ["+file.getName()+"] imported in ", stepTime);
+    			stepTime = System.currentTimeMillis();
     		}
-    		report("Node Import complete in ", prevMilestone1);
-    		prevMilestone = prevMilestone1 = System.currentTimeMillis();
-    		setupStagesForRelationships(importStages);
+    		report("Node Import complete in ", milestone);
+    		stepTime = milestone = System.currentTimeMillis();
+
     		for (File file : config.getRelsFiles()) {
-    			importNew(Utils.createFileBufferedReader(file), importStages);
-    			report("\tRelationship file ["+file.getName()+"] imported in ", prevMilestone);
-    			prevMilestone = System.currentTimeMillis();
+    			importRelationships(Utils.createFileReader(file));
+    			report("\tRelationship file ["+file.getName()+"] imported in ", stepTime);
+    			stepTime = System.currentTimeMillis();
     		}
     		importStages.stop();
     		db.linkBackRelationships();
-    		report("Relationship Import complete in " , prevMilestone1);
+    		report("Relationship Import complete in " , milestone);
     		report("Import complete with Indexing pending in " , startImport);
     		for (IndexInfo indexInfo : config.getIndexInfos()) {
     			if (indexInfo.shouldImportFile()) importIndex(indexInfo);
@@ -188,19 +189,38 @@ public class NewImporter {
     	return writerStage;
     }
 
-    private void importNew(BufferedReader reader, Stages importStages)throws BatchImportException{
-    	ReadFileData input = new ReadFileData(reader, 
-				config.getDelimChar(), 0, config.quotesEnabled());
-    	db.setDataInput(input);
-    	importStages.start(input);
-		importStages.pollResults(batchInserter);
-    }
-    
-    private Stages setupStagesForNodes()throws BatchImportException{
-    	Stages importStages = new Stages(new StageMethods(db, batchInserter, indexes));
+    private Stages setupStages() throws BatchImportException{
+    	Stages importStages = new Stages(new StageMethods(db, db, indexes));
 		WriterStage writerStage = setWriterStage(importStages);
 		db.setDiskBlockingQ(writerStage.getDiskBlockingQ());
 		importStages.setDataBuffers(writerStage.getDiskRecordsCache());
+		writerStage.start();
+		importStageState = ImportStageState.Initialized;
+		return importStages;
+    }
+    public void importNodes(Reader reader)throws BatchImportException{
+    	if (importStageState == ImportStageState.Uninitialized || importStages == null)
+    		importStages = setupStages();
+    	if (importStageState != ImportStageState.RelationshipImport)
+    		setupStagesForNodes();
+    	importNew(reader, 0);
+    }
+    public void importRelationships(Reader reader)throws BatchImportException{
+    	if (importStageState == ImportStageState.Uninitialized || importStages == null)
+    		importStages = setupStages();
+    	if (importStageState != ImportStageState.RelationshipImport)
+    		setupStagesForRelationships();	
+    	importNew(reader, 3);
+    }
+    private void importNew(Reader reader, int offset){
+    	ReadFileData input = new ReadFileData( new BufferedReader(reader,Constants.BUFFERED_READER_BUFFER), 
+				config.getDelimChar(), offset, config.quotesEnabled());
+    	db.setDataInput(input);
+    	importStages.start(input);
+		importStages.pollResults(db);
+    }
+    
+    private void setupStagesForNodes()throws BatchImportException{	
 		try {
     		Class[] parameterTypes = new Class[2];
     		parameterTypes[0] = ReadFileData.class;
@@ -210,16 +230,14 @@ public class NewImporter {
     				StageMethods.ImportNode.class.getMethod("stage2", parameterTypes),
     				StageMethods.ImportNode.class.getMethod("stage3", parameterTypes));
     		importStages.setSingleThreaded(false, true, false, false);
+    		importStageState = ImportStageState.NodeImport;
     	}catch (Exception e){
     		throw new BatchImportException("[Nodes setup failed]"+e.getMessage());
     	} 
-		// start writers
-		writerStage.start();
-		return importStages;
     }
     
-    private void setupStagesForRelationships(Stages importStages)throws BatchImportException{
-    	NodesCache nodeCache = new NodesCache(batchInserter.getNeoStore().getNodeStore().getHighId());
+    private void setupStagesForRelationships()throws BatchImportException{
+    	NodesCache nodeCache = new NodesCache(db.getNeoStore().getNodeStore().getHighId());
 		db.setNodesCache(nodeCache);
 		try {
     		Class[] parameterTypes = new Class[2];
@@ -231,6 +249,7 @@ public class NewImporter {
     				StageMethods.ImportRelationship.class.getMethod("stage3", parameterTypes),
     				StageMethods.ImportRelationship.class.getMethod("stage4", parameterTypes));
     		importStages.setSingleThreaded(false,true,false,true,false);
+    		importStageState = ImportStageState.RelationshipImport;
     	}catch (Exception e){
     		throw new BatchImportException("[Relationship setup failed]"+e.getMessage());
     	} 

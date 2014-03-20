@@ -6,6 +6,9 @@ import java.util.concurrent.CountDownLatch;
 
 import org.neo4j.batchimport.newimport.structs.CSVDataBuffer;
 import org.neo4j.batchimport.newimport.structs.Constants;
+import org.neo4j.batchimport.newimport.structs.Constants.ImportStageState;
+import org.neo4j.batchimport.newimport.structs.Constants.ThreadState;
+import org.neo4j.batchimport.newimport.structs.Constants.ThreadStateTransition;
 import org.neo4j.batchimport.newimport.structs.DataBufferBlockingQ;
 import org.neo4j.batchimport.newimport.structs.DiskRecordsCache;
 import org.neo4j.batchimport.newimport.structs.RunData;
@@ -16,6 +19,7 @@ public class Stages {
 	private DataBufferBlockingQ<CSVDataBuffer> bufferQ;
 	private int threadCount;
 	private int activeThreadCount = 0;
+	private ThreadState[] threadState;
 	private RunData[][] stageRunData;
 	private boolean[] stageComplete;
 	private int numStages;
@@ -33,6 +37,7 @@ public class Stages {
 	public Stages(StageMethods stageMethods){
 		threadCount = Runtime.getRuntime().availableProcessors();		
 		importWorkers = new ImportWorker[threadCount];
+		threadState = new ThreadState[threadCount];
 		this.stageMethods = stageMethods;	
 	}
 
@@ -56,6 +61,12 @@ public class Stages {
 	public void setSingleThreaded(boolean... type){
 		for (int i = 0; i < type.length; i++)
 			bufferQ.setSingleThreaded(i, type[i]);
+	}
+	public ThreadState getThreadState(int threadIndex){
+		return threadState[threadIndex];
+	}
+	public void setThreadState(int threadIndex, ThreadState state){
+		threadState[threadIndex] = state;
 	}
 	public void setDataBuffers(DiskRecordsCache diskCache){
 		bufArray = createInputBufferArray(Constants.BUFFERQ_SIZE, diskCache);
@@ -97,18 +108,23 @@ public class Stages {
 	private void assignThreadsToStages(){
 		int threadIndex = 0, stageIndex = 0;
 		//one thread to each stage
-		for (int i = 0; i < numStages; i++)
-			importWorkers[threadIndex++].setStageIndex(i, true);
+		for (int i = 0; i < numStages; i++){
+			importWorkers[threadIndex].setStageIndex(i, true);
+			threadState[threadIndex] = ThreadState.Pinned;
+			threadIndex++;
+		}
 		//remaining up to maxThreads/2, pin to multithreaded stages
 		for (; threadIndex < this.threadCount/2;stageIndex++)
 			if (!bufferQ.isSingleThreaded(stageIndex % numStages)){
 				importWorkers[threadIndex].setStageIndex(stageIndex % numStages, true);
+				threadState[threadIndex] = ThreadState.Pinned;
 				threadIndex++;
 			}
 	}
-	public void stop(){
+	public ImportStageState stop(){
 		moreWork = false;
 		startStagesSyncPoint.countDown();
+		return ImportStageState.Exited;
 	}
 	public DataBufferBlockingQ<CSVDataBuffer> getBufferQ(){
 		return bufferQ;
@@ -136,6 +152,22 @@ public class Stages {
 	}
 	public StageMethods getStageMethods(){
 		return stageMethods;
+	}
+	public void threadStateTransition(int threadIndex, ThreadStateTransition transition){
+		if (transition ==  ThreadStateTransition.StartProcessBuffer){
+			if (threadState[threadIndex] == ThreadState.PinnedWaitInputQ ||
+					threadState[threadIndex] == ThreadState.Pinned)
+				threadState[threadIndex] = ThreadState.PinnedProceessing;
+			else
+				threadState[threadIndex] = ThreadState.FloatProcessing;
+		} else if (transition ==  ThreadStateTransition.EndProcessBuffer){
+			if (threadState[threadIndex] == ThreadState.PinnedProceessing ||
+					threadState[threadIndex] == ThreadState.Pinned)
+				threadState[threadIndex] = ThreadState.PinnedWaitInputQ;
+			else
+				threadState[threadIndex] = ThreadState.FloatWaitInputQ;
+		}
+				
 	}
 	public Object getMethods(){
 		if (currentMode == Constants.NODE)
@@ -175,7 +207,7 @@ public class Stages {
 	 }
 	 public void pollResults(BatchInserterImpl batchInserter){
 		 long startTime = System.currentTimeMillis();
-		 int waitCount = 0;
+		 long waitCount = 0, billion = 1;
 		 while (true){
 			 try {
 				 Thread.sleep(500);
@@ -187,6 +219,12 @@ public class Stages {
 				 if (waitCount % Constants.progressPollInterval == 0)
 						 System.out.print("In progress: ["+waitCount/1000+"] "+Utils.getMaxIds(batchInserter.getNeoStore())+'\r');
 
+				 if (Utils.getTotalIds(batchInserter.getNeoStore()) > billion*1000000000){
+					 // for strange reason, process abort for lack of memory. 
+					 // This is a forced gc every billion elements to avoid out-of-memory failures.
+					 billion++;
+					 System.gc();
+				 }
 				 if (isComplete())
 					 return;
 			 } catch (Exception e){
@@ -203,8 +241,11 @@ public class Stages {
 		 str.append("Q Stats");
 		 for (int i = 0; i < bufferQ.getLength();i++)
 			 str.append("["+bufferQ.getQ(i).size()+":"+bufferQ.getThreadCount(i)+"]");
+		 str.append("][");	
+		 int[] threadAssigment = bufferQ.getThreadAssignment();
+		 for (int i =0; i < threadCount; i++)
+			 str.append("("+threadAssigment[i]+":"+threadState[i]+")");
 		 str.append("]");		
-
 		 System.out.println("\t"+str);
 		 str.setLength(0);
 		 str.append("StageStats["+timeTaken+" ms]");

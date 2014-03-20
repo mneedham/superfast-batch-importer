@@ -8,17 +8,17 @@ import org.neo4j.batchimport.newimport.utils.Utils;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
 import org.neo4j.unsafe.batchinsert.BatchInserterImpl;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
-import org.neo4j.unsafe.batchinsert.BatchInserterWrapper;
+import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 
 
 public class StageMethods {
-	BatchInserterWrapper newBatchImporter;
+	BatchInserterImplNew newBatchImporter;
 	BatchInserterImpl batchInserter;
 	Map<String,BatchInserterIndex> indexes;
 	ImportNode importNode = new ImportNode();
 	ImportRelationship importRelationship = new ImportRelationship();
 	WriterStage writerStage = new WriterStage();
-	public StageMethods(BatchInserterWrapper newBatchImporter, 
+	public StageMethods(BatchInserterImplNew newBatchImporter, 
 						BatchInserterImpl batchImp,
 						Map<String,BatchInserterIndex> indexes){
 		this.newBatchImporter = newBatchImporter;
@@ -49,7 +49,6 @@ public class StageMethods {
 					else			
 						buf.setId(index, batchInserter.getNeoStore().getNodeStore().nextId());
 				newBatchImporter.createNodeRecords(buf);
-				newBatchImporter.importEncodeProps(buf);
 			} catch (Exception e){
 				throw new BatchImportException("[ImportNode Stage1 failed]"+e.getMessage());
 			}
@@ -57,6 +56,7 @@ public class StageMethods {
 
 		public void stage2(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
 			try {
+				newBatchImporter.importEncodeProps(buf);
 				newBatchImporter.setPropIds(buf, false);
 				newBatchImporter.importNode_writeStore(buf, false);
 			} catch (Exception e){

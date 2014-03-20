@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.net.URI;
 import java.net.URL;
 import java.text.SimpleDateFormat;
@@ -51,15 +52,23 @@ public class Utils {
 		return ("Property["+highIds[0]+"] Node["+highIds[1]+"] Relationship["+highIds[2]+"] Label["+highIds[3]+"]");
 	}
 
-	public static BufferedReader createFileBufferedReader(File file) {
+	public static long getTotalIds(NeoStore neoStore){
+		long[] highIds = new long[4];
+		highIds[0] = neoStore.getPropertyStore().getHighId();
+		highIds[1] = neoStore.getNodeStore().getHighId();
+		highIds[2] = neoStore.getRelationshipStore().getHighId();
+		highIds[3] = neoStore.getLabelTokenStore().getHighId();
+		return (highIds[0]+highIds[1]+highIds[2]+highIds[3]);
+	}
+
+	public static Reader createFileReader(File file) {
 		try {
 			final String fileName = file.getName();
 			if (fileName.endsWith(".gz") || fileName.endsWith(".zip")) {
-				InputStreamReader inp = new InputStreamReader(new GZIPInputStream(new BufferedInputStream(new FileInputStream(file)),Constants.BUFFERED_READER_BUFFER));
-				return new BufferedReader(inp);
+                return new InputStreamReader(new GZIPInputStream(new BufferedInputStream(new FileInputStream(file)), Constants.BUFFERED_READER_BUFFER));
 			}
 			final FileReader fileReader = new FileReader(file);
-			return new BufferedReader(fileReader,Constants.BUFFERED_READER_BUFFER);
+            return new BufferedReader(fileReader, Constants.BUFFERED_READER_BUFFER);
 		} catch(Exception e) {
 			throw new IllegalArgumentException("Error reading file "+file+" "+e.getMessage(),e);
 		}

@@ -26,5 +26,7 @@ public class Constants {
 	public static final int DATA_LIMIT         = BINARY_FIELD_SIZE;
 	public static final int BINARY_DATA_LIMIT  = BINARY_FIELD_SIZE * 2;
 	public static boolean detailedData = false;
-
+	public enum ImportStageState {Uninitialized, Initialized, NodeImport, RelationshipImport, Exited};
+	public enum ThreadState {Unassigned, Pinned, PinnedWaitInputQ, FloatWaitInputQ, PinnedProceessing, FloatProcessing };
+	public enum ThreadStateTransition {StartProcessBuffer, EndProcessBuffer}
 }

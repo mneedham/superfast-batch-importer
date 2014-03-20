@@ -5,6 +5,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import org.neo4j.batchimport.newimport.stages.ImportWorker;
+import org.neo4j.batchimport.newimport.structs.Constants.ThreadState;
 
 
 public class DataBufferBlockingQ<DataBufferType>{
@@ -34,6 +35,9 @@ public class DataBufferBlockingQ<DataBufferType>{
 			threadAssignment = new int[maxThreads];
 			for (int i = 0; i < maxThreads; i++)
 				threadAssignment[i] = -1;
+		}
+		public int[] getThreadAssignment(){
+			return threadAssignment;
 		}
 		public int getThreadCount(int stage){
 			return threadCount[stage];

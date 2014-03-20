@@ -4,6 +4,8 @@ import java.lang.reflect.Method;
 
 import org.neo4j.batchimport.newimport.structs.AbstractDataBuffer;
 import org.neo4j.batchimport.newimport.structs.CSVDataBuffer;
+import org.neo4j.batchimport.newimport.structs.Constants.ThreadState;
+import org.neo4j.batchimport.newimport.structs.Constants.ThreadStateTransition;
 import org.neo4j.batchimport.newimport.utils.Utils;
 
 public class ImportWorker extends java.lang.Thread {
@@ -60,6 +62,7 @@ public class ImportWorker extends java.lang.Thread {
 					Thread.sleep(100);
 					continue;
 				}
+				stages.threadStateTransition(threadIndex, ThreadStateTransition.StartProcessBuffer);
 				stageIndex = buffer.getStageIndex();
 				if (stages.getBufferQ().isSingleThreaded(stageIndex))
 					this.setPriority(Thread.NORM_PRIORITY+1);
@@ -87,6 +90,7 @@ public class ImportWorker extends java.lang.Thread {
 						}
 					}
 					buffer = stages.getBufferQ().putBuffer((CSVDataBuffer)buffer);
+					stages.threadStateTransition(threadIndex, ThreadStateTransition.EndProcessBuffer);
 				}
 			} catch (Exception e) {
 				this.excep = e;
