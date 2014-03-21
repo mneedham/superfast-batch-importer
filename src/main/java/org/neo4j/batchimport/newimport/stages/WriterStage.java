@@ -8,13 +8,13 @@ import org.neo4j.batchimport.newimport.structs.DiskRecordsCache;
 import org.neo4j.batchimport.newimport.structs.RunData;
 
 public class WriterStage {
-	int numWriters = 0;
-	DiskRecordsCache diskRecCache;
-	DiskBlockingQ diskBlockingQ;
-	WriterWorker[] writerWorker = null;
-	Method[] writerMethods = null;
-	RunData[] writerRunData;
-	Stages stages;
+	protected int numWriters = 0;
+	protected DiskRecordsCache diskRecCache;
+	protected DiskBlockingQ diskBlockingQ;
+	protected WriterWorker[] writerWorker = null;
+	protected Method[] writerMethods = null;
+	protected RunData[] writerRunData;
+	protected Stages stages;
 	public WriterStage(Stages stages){
 		this.stages = stages;
     	diskRecCache = new DiskRecordsCache(Constants.BUFFERQ_SIZE*2, Constants.BUFFER_ENTRIES);
@@ -29,7 +29,14 @@ public class WriterStage {
 		 for (int i = 0; i < methods.length; i++)
 			 writerMethods[i] = methods[i];
 		 for (int i = 0; i < numWriters; i++){
-			 writerWorker[i] = new WriterWorker(i, writerMethods, diskRecCache, diskBlockingQ, stages, this);
+			 int type = 0;
+			 if (writerMethods[i].getName().contains("Property"))
+				 type = Constants.PROPERTY;
+			 else  if (writerMethods[i].getName().contains("Node"))
+				 type = Constants.NODE;
+			 else  if (writerMethods[i].getName().contains("Relationship"))
+				 type = Constants.RELATIONSHIP;
+			 writerWorker[i] = new WriterWorker(i, type,  stages, this);
 			 writerRunData[i] = new RunData("Writer"+i);
 		 }
 	}

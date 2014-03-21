@@ -4,9 +4,9 @@ import java.util.concurrent.ArrayBlockingQueue;
 
 
 public class DiskRecordsCache {
-	int maxEntries;
-	DiskRecordsBuffer[][] diskRecords;
-	ArrayBlockingQueue<Integer>[] available;
+	private int maxEntries;
+	private DiskRecordsBuffer[][] diskRecords;
+	private ArrayBlockingQueue<Integer>[] available;
 	public DiskRecordsCache(int size, int maxEntries){
 		this.maxEntries = maxEntries;
 		diskRecords = new DiskRecordsBuffer[Constants.RECORDS_TYPE_MAX][size];
@@ -15,7 +15,7 @@ public class DiskRecordsCache {
 			available[j] = new ArrayBlockingQueue<Integer>(size);
 		for (int j = 0; j < Constants.RECORDS_TYPE_MAX; j++){
 			for (int i = 0; i < size; i++){
-				diskRecords[j][i] = new DiskRecordsBuffer(j, this.maxEntries, i); 
+				diskRecords[j][i] = new DiskRecordsBuffer(this.maxEntries, i); 
 				try {
 					available[j].put(i);
 				}catch (InterruptedException ie){

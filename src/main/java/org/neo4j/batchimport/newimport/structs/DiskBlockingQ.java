@@ -5,7 +5,6 @@ import java.util.concurrent.TimeUnit;
 
 public class DiskBlockingQ {
 		private ArrayBlockingQueue<DiskRecordsBuffer>[] blockingQ;
-		private boolean lastBuffer = false;
 		public DiskBlockingQ(int size, int capacity) {
 			blockingQ = new ArrayBlockingQueue[size];
 			for (int i = 0; i < size; i++)
@@ -20,15 +19,11 @@ public class DiskBlockingQ {
 	
 		public DiskRecordsBuffer getBuffer(int qIndex) throws InterruptedException{
 			DiskRecordsBuffer buf = blockingQ[qIndex].poll(500, TimeUnit.MILLISECONDS);
-			//DiskRecordsBuffer buf = blockingQ[qIndex].take();
 			if (buf != null)				
 				buf.qIndex = qIndex;
 			return buf;
 		}
 		public void putBuffer(int qIndex, DiskRecordsBuffer buf)throws InterruptedException{
-			if (buf.isLastBuf){
-				lastBuffer = true;
-			}
 			blockingQ[qIndex].put(buf);
 		}
 

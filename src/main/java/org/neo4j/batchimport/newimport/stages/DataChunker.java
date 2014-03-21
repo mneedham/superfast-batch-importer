@@ -13,25 +13,18 @@ import org.neo4j.batchimport.newimport.structs.Constants;
 * @since 13.11.12
 */
 public class DataChunker {
-    public static final String EOF = null;
-    public static final String EOL = "\n".intern();
-    public static final String NO_VALUE = "".intern();
-    public static final char EOL_CHAR = '\n';
-    public static final char EOF_CHAR = (char)-1;
-    public static final int PREV_EOL_CHAR = -2;
+    private static final char EOL_CHAR = '\n';
+    private static final char EOF_CHAR = (char)-1;
+    private static final int PREV_EOL_CHAR = -2;
     private static final int BUFSIZE = 32*1024;
     private final BufferedReader reader;
     private char delim = '\t';
     private final char[] buffer=new char[BUFSIZE];
     private int lastChar = PREV_EOL_CHAR;
     private int pos=0;
-    int sequenceId = 0;
+    private int sequenceId = 0;
     private boolean seenEOF = false;
-    
-    StringBuilder curStrBuf = null;
-    int cursorPos = 0;
-    public long linesRead = 0;
-    int recType = -1;
+    private int recType = -1;
 
     public DataChunker(BufferedReader reader, char delim) {
         this.reader = reader;
@@ -91,8 +84,10 @@ public class DataChunker {
     }
     
     public boolean fillBuffer(CSVDataBuffer buf)throws IOException{
+    	ImportWorker.threadImportWorker.get().setCurrentMethod();
     	if (fillRawData(buf) < 0)
     		return false;
+    	ImportWorker.threadImportWorker.get().setCurrentMethod(" "+buf.getBufSequenceId());
     	//parse
     	try{
     	int[][] record = new int[buf.getNumColumns()][2];

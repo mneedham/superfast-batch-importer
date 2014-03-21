@@ -9,19 +9,14 @@ import org.neo4j.batchimport.newimport.structs.RunData;
 import org.neo4j.batchimport.newimport.utils.Utils;
 
 public class WriterWorker extends java.lang.Thread {
-	int workerType;
-	String threadName ;
-	Method[] writerMethods;
-	DiskBlockingQ diskRecordsQ;
-	DiskRecordsCache diskRecCache;
-	Stages stages;
-	WriterStage writerStage;
-	WriterWorker(int type, Method[] writerMethods, DiskRecordsCache diskRecCache,
-			DiskBlockingQ diskRecordsQ, Stages stages, WriterStage writerStage){
+	protected int workerType;
+	protected String threadName ;
+	protected Stages stages;
+	protected WriterStage writerStage;
+	protected int writerIndex;
+	WriterWorker(int writerIndex, int type, Stages stages, WriterStage writerStage){
+		this.writerIndex = writerIndex;
 		this.workerType = type;
-		this.writerMethods = writerMethods;
-		this.diskRecordsQ = diskRecordsQ;
-		this.diskRecCache = diskRecCache;
 		this.stages = stages;
 		this.writerStage = writerStage;
 	}
@@ -31,18 +26,19 @@ public class WriterWorker extends java.lang.Thread {
 		this.setPriority(NORM_PRIORITY+2);
 		while (!isDone()){
 			try {
-				DiskRecordsBuffer buf = diskRecordsQ.getBuffer(workerType);
+				DiskRecordsBuffer buf = writerStage.getDiskBlockingQ().getBuffer(workerType);//diskRecordsQ.getBuffer(workerType);
 				if (buf == null)
 					continue;
 				Object[] parameters = new Object[1];
 				parameters[0] = buf;
-				writerStage.getRunData(workerType).linesProcessed += buf.getRecordCount();
 				try{
-					writerMethods[workerType].invoke(stages.getStageMethods().writerStage, parameters);
+					writerStage.writerMethods[writerIndex].invoke(stages.getStageMethods().writerStage, parameters);
 				} catch (Exception e) {
 					Utils.SystemOutPrintln("Writer Method Failed :" + e.getMessage());
 				}			
-				diskRecCache.putDiskRecords(buf, workerType);
+				writerStage.getRunData(writerIndex).linesProcessed += buf.getRecordCount();
+				buf.cleanup();
+				writerStage.getDiskRecordsCache().putDiskRecords(buf, workerType);//diskRecCache.putDiskRecords(buf, workerType);
 			} catch (Exception e){
 				Utils.SystemOutPrintln("Writer died:"+ threadName);
 				break;

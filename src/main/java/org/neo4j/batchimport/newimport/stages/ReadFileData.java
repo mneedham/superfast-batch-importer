@@ -16,14 +16,13 @@ import java.util.*;
 import static org.neo4j.helpers.collection.MapUtil.map;
 
 public class ReadFileData extends AbstractLineData {
-	public static ThreadLocal<RunData> threadLocalPerf = new ThreadLocal<RunData>();
     private DataChunker dataChunker = null;
     protected BufferedReader reader;
     private char delim;
     private boolean useQuotes;
-    CSVReader csvReader = null;
-    int recType;
-    int sequenceId = 0;
+    private CSVReader csvReader = null;
+    private int recType;
+    private int sequenceId = 0;
 
     public ReadFileData(BufferedReader reader, char delim, int offset, boolean useQuotes) {
         super(offset);

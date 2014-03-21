@@ -12,12 +12,13 @@ import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 
 
 public class StageMethods {
-	BatchInserterImplNew newBatchImporter;
-	BatchInserterImpl batchInserter;
-	Map<String,BatchInserterIndex> indexes;
-	ImportNode importNode = new ImportNode();
-	ImportRelationship importRelationship = new ImportRelationship();
-	WriterStage writerStage = new WriterStage();
+	private BatchInserterImplNew newBatchImporter;
+	private BatchInserterImpl batchInserter;
+	private Map<String,BatchInserterIndex> indexes;
+	protected ImportNode importNode = new ImportNode();
+	protected ImportRelationship importRelationship = new ImportRelationship();
+	protected WriterStage writerStage = new WriterStage();
+	
 	public StageMethods(BatchInserterImplNew newBatchImporter, 
 						BatchInserterImpl batchImp,
 						Map<String,BatchInserterIndex> indexes){
@@ -57,14 +58,22 @@ public class StageMethods {
 		public void stage2(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
 			try {
 				newBatchImporter.importEncodeProps(buf);
+			} catch (Exception e){
+				throw new BatchImportException("[ImportNode Stage2 failed]"+e.getMessage());
+			}
+		}
+		
+		public void stage3(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
+			try {
 				newBatchImporter.setPropIds(buf, false);
 				newBatchImporter.importNode_writeStore(buf, false);
 			} catch (Exception e){
-				throw new BatchImportException("[ImportNNode Stage2 failed]"+e.getMessage());
+				throw new BatchImportException("[ImportNode Stage2 failed]"+e.getMessage());
 			}
 		}
 
-		public void stage3(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
+		public void stage4(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
+			ImportWorker.threadImportWorker.get().setCurrentMethod(" "+buf.getBufSequenceId());
 			for (int i = 0; i < buf.getCurEntries(); i++){
 				Map<String, Map<String, Object>> entries = newBatchImporter.getDataInput().getIndexData(buf, i);	    		
 				for (Map.Entry<String, Map<String, Object>> entry : entries.entrySet()) {
@@ -93,7 +102,7 @@ public class StageMethods {
 			newBatchImporter.importEncodeProps(buf);
 		}
 		public void stage3(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
-			newBatchImporter.importRelationships_prepareRecords(buf, true);
+			newBatchImporter.importRelationships_prepareRecords(buf);
 		}	
 		public void stage4(ReadFileData input, CSVDataBuffer buf)throws BatchImportException{
 			newBatchImporter.importRelationships_writeStore(buf);

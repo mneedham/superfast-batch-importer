@@ -1,8 +1,6 @@
 package org.neo4j.batchimport.newimport.structs;
 
 import java.util.Arrays;
-
-import org.neo4j.batchimport.NewImporter;
 import org.neo4j.batchimport.newimport.utils.Utils;
 import org.neo4j.kernel.impl.nioneo.store.PropertyBlock;
 import org.neo4j.kernel.impl.nioneo.store.PropertyRecord;
@@ -14,11 +12,10 @@ public abstract class AbstractDataBuffer {
 	private int maxEntries = 0, curEntries = 0, numColumns = 0;
 	private boolean moreData = true;
 	protected int bufSequenceId = -1;
-	long[] id = null;
-
+	protected long[] id = null;
 	private DiskRecordsBuffer[] diskRecords = new DiskRecordsBuffer[4];
 	private DiskRecordsCache diskRecordsCache;
-	private boolean dirty = false;
+	
 	public AbstractDataBuffer(int maxEntries, int bufSize, int index, DiskRecordsCache diskCache) {
 		this.maxEntries = maxEntries;
 		id = new long[this.maxEntries];
@@ -84,7 +81,6 @@ public abstract class AbstractDataBuffer {
 					diskRecords[i].extend(this.maxEntries);
 		}   		
 		Utils.arrayCopy(record, records[curEntries]);
-		dirty = true;
 		return curEntries++;
 	}
 	public int[][][] getRecords() {
@@ -98,13 +94,11 @@ public abstract class AbstractDataBuffer {
 	}
 	
 	public void cleanup(){
-		if (!dirty)
-			return;
+		curEntries = 0;
 		rawStrBuf.setLength(0);
 		for (int i = 0; i < records.length; i++)
 			for (int j = 0; j < records[i].length; j++)
 				Arrays.fill(records[i][j], 0);
-		curEntries = 0;
 		this.moreData = true;
 	}
 	private long getLong(int[][] record, int colIndex){

@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.neo4j.batchimport.importer.RelType;
+import org.neo4j.batchimport.newimport.stages.ImportWorker;
 import org.neo4j.batchimport.newimport.stages.ReadFileData;
 import org.neo4j.batchimport.newimport.structs.Constants;
 import org.neo4j.batchimport.newimport.structs.DiskBlockingQ;
@@ -69,25 +70,6 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 		dataInput = input;
 	}
 
-	public int writeNodeNextRel()throws BatchImportException{
-		int errorCount = 0;
-		long lastId = getNodeStore().getHighId();
-		NodeRecord nodeRec = null;
-		try {
-			for (long id = lastId-1; id >= 0 ; id--){
-				try {
-					nodeRec = getNodeStore().getRecord(id);
-					nodeRec.setNextRel(nodeCache.get(id));
-					getNodeStore().updateRecord(nodeRec);
-				} catch (Exception e){
-					errorCount++;
-				} 		
-			}
-		}catch (Exception e){
-			throw new BatchImportException("[writeNodeNextRel failed]"+e.getMessage());
-		}
-		return errorCount;
-	}
 	public ReadFileData getDataInput(){
 		return dataInput;
 	}
@@ -142,10 +124,6 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 		}
 	}
 
-	public void importNode_EncodeProps(CSVDataBuffer buf)throws BatchImportException{
-		importEncodeProps(buf);	
-	}
-
 	public void importNode_writeStore(CSVDataBuffer buf, boolean relation)throws BatchImportException{
 		DiskRecordsBuffer recsNode = buf.removeDiskRecords(Constants.NODE);
 		if (!buf.isMoreData())
@@ -154,7 +132,7 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 		DiskRecordsBuffer recsProps = buf.removeDiskRecords(Constants.PROPERTY);
 		if (!buf.isMoreData())
 			recsProps.setLastBuffer(!buf.isMoreData());
-
+		ImportWorker.threadImportWorker.get().setCurrentMethod(" "+buf.getBufSequenceId());
 		try {
 			diskBlockingQ.putBuffer(Constants.PROPERTY, recsProps);
 			diskBlockingQ.putBuffer(Constants.NODE, recsNode);
@@ -192,11 +170,11 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 		}  	
 	}
 
-	public void importRelationships_prepareRecords(CSVDataBuffer buf, boolean relation)throws BatchImportException{
+	public void importRelationships_prepareRecords(CSVDataBuffer buf)throws BatchImportException{
 		long firstNextRel, secondNextRel, firstNodeId, secondNodeId;
 		RelationshipRecord rel;
 
-		setPropIds(buf, relation);
+		setPropIds(buf, true);
 		for (int index = 0; index < buf.getCurEntries(); index++)
 		{ 	
 			try{
@@ -229,7 +207,7 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 	}
 
 	public void importRelationships_writeStore(CSVDataBuffer buf)throws BatchImportException{
-
+		ImportWorker.threadImportWorker.get().setCurrentMethod(" "+buf.getBufSequenceId());
 		try{
 			DiskRecordsBuffer recs = buf.removeDiskRecords(Constants.NODE);
 			if (!buf.isMoreData())
@@ -257,13 +235,14 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 	public void importEncodeProps(CSVDataBuffer buf)throws BatchImportException
 	{
 		PropertyStore propStore = getPropertyStore();
+		ImportWorker.threadImportWorker.get().setCurrentMethod(" "+buf.getBufSequenceId());
 		if (buf.getDiskRecords(Constants.PROPERTY).getMaxEntries() < buf.getMaxEntries())
 			buf.getDiskRecords(Constants.PROPERTY).extend(buf.getMaxEntries());
 		if (buf.getDiskRecords(Constants.PROPERTY_BLOCK).getMaxEntries() < buf.getMaxEntries())
 			buf.getDiskRecords(Constants.PROPERTY_BLOCK).extend(buf.getMaxEntries());
 		for (int index = 0; index < buf.getCurEntries(); index++){	
 			try{
-				Map<String, Object> properties = dataInput.getProperties(buf, index);;
+				Map<String, Object> properties = dataInput.getProperties(buf, index);
 				if ( properties == null || properties.isEmpty() ) {
 					buf.getDiskRecords(Constants.PROPERTY_BLOCK).clearRecord(index);
 					continue;
@@ -285,6 +264,7 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 	}
 	public void setPropIds(CSVDataBuffer buf, boolean relation)throws BatchImportException{
 		PropertyStore propStore = getPropertyStore();
+		ImportWorker.threadImportWorker.get().setCurrentMethod(" "+buf.getBufSequenceId());
 		for (int index = 0; index < buf.getCurEntries(); index++){	
 			buf.getDiskRecords(Constants.PROPERTY).clearRecord(index);
 			if (buf.getDiskRecords(Constants.PROPERTY_BLOCK).isEmpty(index)) 
@@ -333,7 +313,6 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 				throw new BatchImportException("[WriteProperty failed]"+e.getMessage());
 			}
 		}
-		buf.cleanup();
 	}
 	long prevId = 0;
 	public void writeRelationship(DiskRecordsBuffer buf)throws BatchImportException{
@@ -348,7 +327,6 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 				throw new BatchImportException("[WriteRelationship failed]"+e.getMessage());
 			}
 		}
-		buf.cleanup();
 	}
 	public void writeNode(DiskRecordsBuffer buf)throws BatchImportException{
 		for (int index = 0; index < buf.getCurrentEntries(); index++)
@@ -362,26 +340,45 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 				throw new BatchImportException("[WriteNodes failed]"+e.getMessage());
 			}
 		}
-		buf.cleanup();
+	}
+
+	public int writeNodeNextRel()throws BatchImportException{
+		int errorCount = 0;
+		long lastId = getNodeStore().getHighId();
+		NodeRecord nodeRec = null;
+		for (long id = lastId-1; id >= 0 ; id--){
+			try {
+				nodeRec = getNodeStore().getRecord(id);
+				nodeRec.setNextRel(nodeCache.get(id));
+				getNodeStore().updateRecord(nodeRec);
+			} catch (Exception e){
+				System.out.println("[writeNodeNextRel failed]"+e.getMessage());
+				if (errorCount++ > Constants.errorThreshold)
+					throw new BatchImportException("[writeNodeNextRel failed]{Errors exceeded error threshold -"+errorCount+"]");
+			} 		
+		}
+		return errorCount;
 	}
 
 	public void linkBackRelationships() throws BatchImportException{       	
-		writeNodeNextRel();
-		linkBack();
+		int errorCount = writeNodeNextRel();
+		if (errorCount > 0)
+			throw new BatchImportException("[writeNodeNextRel failed]{Errors -"+errorCount+"]");
+		errorCount = relationshiplinkBack();
+		if (errorCount > 0)
+			throw new BatchImportException("[relationshiplinkBack failed]{Errors -"+errorCount+"]");
 	}
-	public int linkBack() throws BatchImportException{
+	public int relationshiplinkBack() throws BatchImportException{
 		int errorCount = 0;
 		long current = 0, prev = 0, relId = 0;
 		long firstNode = 0, secondNode = 0;
 		RelationshipRecord relRecord = null;
 		long maxNodeId = neoStore.getNodeStore().getHighId();
 		long maxRelId = neoStore.getRelationshipStore().getHighId();
-		System.out.println(Utils.memoryStats());
 		if (nodeCache == null)
-			nodeCache = new NodesCache(this.getNeoStore().getNodeStore().getHighId());
+			nodeCache = new NodesCache(maxNodeId);
 		else
 			nodeCache.clean();
-		System.out.println(Utils.memoryStats());
 		long startLinkBack = prev = System.currentTimeMillis();
 		for (long id = maxRelId-1; id >= 0; id--){
 			try {
@@ -402,11 +399,13 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 				nodeCache.put(secondNode, relId);						
 				if (id % 10000000 == 0){
 					current = System.currentTimeMillis();
-					System.out.println("\tCompleted linking "+(maxRelId-id)+ " links in "+(current-startLinkBack)+" ms ["+(current-prev)+"]");
+					System.out.println("\tCompleted Relationship back linking "+(maxRelId-id)+ " links in "+(current-startLinkBack)+" ms ["+(current-prev)+"]");
 					prev = current;
 				}
 			} catch (Exception e){
-				throw new BatchImportException("[Error in link back logic]"+ e.getMessage());
+				System.out.println("[Error in Relationship link back logic]"+ e.getMessage());
+				if (errorCount++ > Constants.errorThreshold)
+					throw new BatchImportException("[Error in Relationship link back logic]{Errors exceeded error threshold -"+errorCount+"]");
 			}
 		}
 		return errorCount;

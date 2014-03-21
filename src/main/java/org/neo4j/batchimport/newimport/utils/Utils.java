@@ -15,6 +15,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.zip.GZIPInputStream;
 
+import org.neo4j.batchimport.NewImporter;
 import org.neo4j.batchimport.newimport.structs.Constants;
 import org.neo4j.kernel.impl.nioneo.store.NeoStore;
 
@@ -22,7 +23,6 @@ import org.neo4j.kernel.impl.nioneo.store.NeoStore;
 public class Utils {
 
 	public static String memoryStats(){
-
 		Runtime runtime = Runtime.getRuntime();
 		StringBuilder str = new StringBuilder();        
 		str.append("Memory stats[MB]");
@@ -42,13 +42,27 @@ public class Utils {
 			System.arraycopy(aSource[i], 0, aDestination[i], 0, aSource[i].length);
 		}
 	}
-
 	public static String getMaxIds(NeoStore neoStore){
+		return getMaxIds(neoStore, false);
+	}
+	static long diskOld = 0;
+	public static String getMaxIds(NeoStore neoStore, boolean writeRate){
 		long[] highIds = new long[4];
+		long rate = 0; long diskNew = 0;
 		highIds[0] = neoStore.getPropertyStore().getHighId();
 		highIds[1] = neoStore.getNodeStore().getHighId();
 		highIds[2] = neoStore.getRelationshipStore().getHighId();
 		highIds[3] = neoStore.getLabelTokenStore().getHighId();
+		if (writeRate){
+			diskNew = (highIds[0]) * neoStore.getPropertyStore().RECORD_SIZE +
+						(highIds[1]) * neoStore.getNodeStore().RECORD_SIZE +
+						(highIds[2]) * neoStore.getRelationshipStore().RECORD_SIZE +
+						(highIds[3]) * neoStore.getLabelTokenStore().getRecordSize();
+			rate = (diskNew - diskOld)/(Constants.mb * (Constants.progressPollInterval/1000));
+			diskOld = diskNew;
+		}
+		if (writeRate)
+			return ("Property["+highIds[0]+"] Node["+highIds[1]+"] Relationship["+highIds[2]+"] Label["+highIds[3]+"] Disk["+diskNew/Constants.mb+" mb] Rate["+rate+" mb/sec]");	
 		return ("Property["+highIds[0]+"] Node["+highIds[1]+"] Relationship["+highIds[2]+"] Label["+highIds[3]+"]");
 	}
 
@@ -107,6 +121,26 @@ public class Utils {
 			version = shortClassName + " $ " + e.toString();
 		}
 		return version;
+	}
+
+	public static String getCodeLocation(){
+		return getCodeLocation(true, 0, null);
+	}
+	public static String getCodeLocation(boolean withLineNo, int depth){
+		return getCodeLocation(withLineNo, depth, null);
+	}
+	public static String getCodeLocation(boolean withLineNo, int depth, String tag){
+		long curTime = (System.currentTimeMillis() - NewImporter.startImport)/1000;
+		StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+		StringBuilder returnVal = new StringBuilder();
+		String[] className = stack[depth].getClassName().split("\\.");
+		returnVal.append(className[className.length-1]+"."+stack[depth].getMethodName());
+		if (withLineNo)
+			returnVal.append("."+stack[depth].getLineNumber());
+		returnVal.append(":"+curTime);
+		if (tag != null)
+			returnVal.append(":"+tag);
+		return returnVal.toString();
 	}
 
 }

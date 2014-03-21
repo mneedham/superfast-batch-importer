@@ -22,6 +22,7 @@ public class Config {
     public static final String BATCH_IMPORT_CSV_QUOTES = "batch_import.csv.quotes";
     public static final String BATCH_IMPORT_CSV_DELIM = "batch_import.csv.delim";
     public static final String ARRAY_SEPARATOR_CONFIG = "batch_array_separator";
+    public static final String BATCH_IMPORT_DEBUG_MODE = "batch_import_debug";
     public static String ARRAYS_SEPARATOR = ",";
 
     private final Map<String, String> configData;
@@ -73,6 +74,7 @@ public class Config {
         addConfigParamIfArgument(args, config, BATCH_IMPORT_GRAPH_DB);
         addConfigParamIfArgument(args, config, BATCH_IMPORT_NODES_FILES);
         addConfigParamIfArgument(args, config, BATCH_IMPORT_RELS_FILES);
+        addConfigParamIfArgument(args, config, BATCH_IMPORT_DEBUG_MODE);;
         Collection<IndexInfo> indexes = createIndexInfos(args);
         for (IndexInfo index : indexes) {
             index.addToConfig(config);
@@ -195,7 +197,7 @@ public class Config {
         return get(BATCH_IMPORT_GRAPH_DB);
     }
 
-    String get(String option) {
+    public String get(String option) {
         return configData.get(option);
     }
 

@@ -5,13 +5,12 @@ import java.util.Iterator;
 import java.util.List;
 
 public class DiskRecordsBuffer {
-	int type, arrayIndex, qIndex;
+	protected int arrayIndex, qIndex;
 	private int recordCount, maxEntries, curEntries;
 	private List<Object>[] records = null;
 	protected boolean isLastBuf = false, inUse = false;
-	public DiskRecordsBuffer(int type, int entries, int arrayIndex){
+	public DiskRecordsBuffer(int entries, int arrayIndex){
 		this.maxEntries = entries;
-		this.type = type;
 		this.arrayIndex = arrayIndex;
 		List<Object>[] recs = new ArrayList[this.maxEntries];
 		for (int i = 0; i < this.maxEntries; i++)

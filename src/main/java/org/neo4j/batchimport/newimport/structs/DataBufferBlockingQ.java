@@ -5,8 +5,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import org.neo4j.batchimport.newimport.stages.ImportWorker;
-import org.neo4j.batchimport.newimport.structs.Constants.ThreadState;
-
 
 public class DataBufferBlockingQ<DataBufferType>{
 		private ArrayBlockingQueue<DataBufferType>[] blockingQ;
@@ -85,6 +83,7 @@ public class DataBufferBlockingQ<DataBufferType>{
 		private DataBufferType getBufferSingle(int qIndex) throws InterruptedException{
 			DataBufferType buffer = null;
 			ArrayBlockingQueue<DataBufferType> bufferQ = blockingQ[qIndex];
+		ImportWorker.threadImportWorker.get().setCurrentMethod();
 			while (buffer == null && !lastBuffer[qIndex]){
 				if (sequencedBuffers(qIndex)){
 					if (bufferQ.peek() != null){
@@ -141,8 +140,13 @@ public class DataBufferBlockingQ<DataBufferType>{
 				qIndex = worker.getStageIndex();
 				if (isSingleThreaded[qIndex])
 					return count(getBufferSingle(qIndex), qIndex, worker);
+			ImportWorker.threadImportWorker.get().setCurrentMethod();
 				while (buffer == null && !lastBuffer[qIndex])
 					buffer = blockingQ[qIndex].poll(100, TimeUnit.MILLISECONDS);
+			if (buffer == null)
+			ImportWorker.threadImportWorker.get().setCurrentMethod();
+			else
+				ImportWorker.threadImportWorker.get().setCurrentMethod(" "+((AbstractDataBuffer)buffer).getBufSequenceId());
 				return count(buffer, qIndex, worker);
 			}
 			qIndex = findQMax();			

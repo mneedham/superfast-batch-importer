@@ -4,20 +4,20 @@ import java.lang.reflect.Method;
 
 import org.neo4j.batchimport.newimport.structs.AbstractDataBuffer;
 import org.neo4j.batchimport.newimport.structs.CSVDataBuffer;
-import org.neo4j.batchimport.newimport.structs.Constants.ThreadState;
-import org.neo4j.batchimport.newimport.structs.Constants.ThreadStateTransition;
 import org.neo4j.batchimport.newimport.utils.Utils;
 
 public class ImportWorker extends java.lang.Thread {
+	public static ThreadLocal<ImportWorker> threadImportWorker = new ThreadLocal<ImportWorker>();
 	private Exception excep;
 	private String name = "";
 	private boolean isRunning = false;
 	private Method[] importWorkerMethods;
 	private ReadFileData input;
 	private int stageIndex = -1;
-	final private int threadIndex;
+	private final int threadIndex;
 	private Stages stages;
 	private boolean isPinned = false;
+	private String threadCurrentMethod;
 	
 	ImportWorker(ReadFileData inp, int threadIndex, Stages stages) {
 		input = inp;
@@ -45,7 +45,18 @@ public class ImportWorker extends java.lang.Thread {
 		return isPinned;
 	}
 
+	public void setCurrentMethod(String tag){
+		threadCurrentMethod = Utils.getCodeLocation(true, 3, tag);	
+	}	
+	public void setCurrentMethod(){
+		threadCurrentMethod = Utils.getCodeLocation(true, 4);	
+	}
+	public String getCurrentMethod(){
+		return threadCurrentMethod;	
+	}
+
 	public void run() {
+		threadImportWorker.set(this);
 		stages.upThreadCount();
 		isRunning = true;
 		Thread.currentThread().setName(name);
@@ -62,7 +73,7 @@ public class ImportWorker extends java.lang.Thread {
 					Thread.sleep(100);
 					continue;
 				}
-				stages.threadStateTransition(threadIndex, ThreadStateTransition.StartProcessBuffer);
+				this.setCurrentMethod(" "+buffer.getBufSequenceId());
 				stageIndex = buffer.getStageIndex();
 				if (stages.getBufferQ().isSingleThreaded(stageIndex))
 					this.setPriority(Thread.NORM_PRIORITY+1);
@@ -83,14 +94,17 @@ public class ImportWorker extends java.lang.Thread {
 					stages.getStageRunData(buffer.getStageIndex(), threadIndex).linesProcessed += buffer.getCurEntries();
 					if (!buffer.isMoreData() && buffer.getCurEntries() > 0) {
 						stages.setStageComplete(buffer.getStageIndex(), true);
+						
 						if (buffer.getStageIndex() == 0){
-							//wait till all the fellow threads in stage 0 to complete
-							while (stages.getBufferQ().getThreadCount(0) > 1)
+							//wait till all the fellow threads in stage 0 to complete.
+							//wait count is to avoid indefinite wait.
+							int waitCount = 200;
+							while (stages.getBufferQ().getThreadCount(0) > 1 && waitCount-- > 0)
 								Thread.sleep(100);
 						}
 					}
 					buffer = stages.getBufferQ().putBuffer((CSVDataBuffer)buffer);
-					stages.threadStateTransition(threadIndex, ThreadStateTransition.EndProcessBuffer);
+					this.setCurrentMethod();
 				}
 			} catch (Exception e) {
 				this.excep = e;

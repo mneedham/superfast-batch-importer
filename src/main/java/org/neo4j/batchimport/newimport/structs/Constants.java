@@ -3,7 +3,8 @@ package org.neo4j.batchimport.newimport.structs;
 public class Constants {
 	
 	public static int progressPollInterval = 1000;
-	public static int printPollInterval = 300000;
+	public static int printPollInterval = 10000;
+	public static int errorThreshold = 50;
 
 	public static int PROPERTY = 0;
 	public static int NODE = 1;
@@ -25,8 +26,6 @@ public class Constants {
 	public static int BINARY_FIELD_SIZE = 8192;
 	public static final int DATA_LIMIT         = BINARY_FIELD_SIZE;
 	public static final int BINARY_DATA_LIMIT  = BINARY_FIELD_SIZE * 2;
-	public static boolean detailedData = false;
+	public static boolean debugData = false;
 	public enum ImportStageState {Uninitialized, Initialized, NodeImport, RelationshipImport, Exited};
-	public enum ThreadState {Unassigned, Pinned, PinnedWaitInputQ, FloatWaitInputQ, PinnedProceessing, FloatProcessing };
-	public enum ThreadStateTransition {StartProcessBuffer, EndProcessBuffer}
 }
