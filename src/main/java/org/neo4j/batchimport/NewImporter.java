@@ -141,7 +141,10 @@ public class NewImporter {
     }
     
     private void report(String header, long prevTime){
-    	 System.out.println(header +(System.currentTimeMillis()- prevTime)/1000+ " secs - ["+Utils.getMaxIds(db.getNeoStore())+"]");
+    	if (prevTime == -1)
+    		System.out.println(Utils.getCurrentTimeStamp()+header);
+    	else
+    		System.out.println(Utils.getCurrentTimeStamp()+header +(System.currentTimeMillis()- prevTime)/1000+ " secs - ["+Utils.getMaxIds(db.getNeoStore())+"]");
     }
     private void doImport() throws IOException {
     	long stepTime = System.currentTimeMillis();
@@ -169,7 +172,7 @@ public class NewImporter {
     			if (indexInfo.shouldImportFile()) importIndex(indexInfo);
     		} 
     	} catch (BatchImportException be){            	
-    		System.out.println("[Batch Import failed]"+be.getMessage());
+    		report("[Batch Import failed]"+be.getMessage(), -1);
     	}
     	finally {
     		finish();

@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URI;
 import java.net.URL;
+import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.jar.JarEntry;
@@ -37,11 +38,16 @@ public class Utils {
 		System.out.println(out);
 	}
 
+	public static String getCurrentTimeStamp(){
+		Timestamp ts = new Timestamp(System.currentTimeMillis());
+        return("["+ts.toString()+"]");
+	}
 	public static void arrayCopy(int[][] aSource, int[][] aDestination) {
 		for (int i = 0; i < aSource.length; i++) {
 			System.arraycopy(aSource[i], 0, aDestination[i], 0, aSource[i].length);
 		}
 	}
+	
 	public static String getMaxIds(NeoStore neoStore){
 		return getMaxIds(neoStore, false);
 	}

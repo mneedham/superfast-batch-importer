@@ -363,10 +363,10 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 	public void linkBackRelationships() throws BatchImportException{       	
 		int errorCount = writeNodeNextRel();
 		if (errorCount > 0)
-			throw new BatchImportException("[writeNodeNextRel failed]{Errors -"+errorCount+"]");
+			throw new BatchImportException("[writeNodeNextRel failed]{Errors :"+errorCount+"]");
 		errorCount = relationshiplinkBack();
 		if (errorCount > 0)
-			throw new BatchImportException("[relationshiplinkBack failed]{Errors -"+errorCount+"]");
+			throw new BatchImportException("[relationshiplinkBack failed]{Errors :"+errorCount+"]");
 	}
 	public int relationshiplinkBack() throws BatchImportException{
 		int errorCount = 0;
@@ -384,7 +384,7 @@ public class BatchInserterImplNew extends BatchInserterImpl{
 			try {
 				relRecord =  neoStore.getRelationshipStore().getRecord(id);
 				if (!relRecord.inUse()){
-					throw new BatchImportException("Relationship ["+relRecord.getId()+"] not in use", null);
+					throw new BatchImportException("Relationship ["+relRecord.getId()+" ["+relRecord.toString()+"] not in use", null);
 				}
 				relId = relRecord.getId();
 				firstNode = relRecord.getFirstNode();
