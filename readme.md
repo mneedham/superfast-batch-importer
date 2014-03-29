@@ -350,6 +350,28 @@ with 35 ECU, 60GB RAM, 2TB SSD writing up to 500MB/s, resulting in a store of 1.
 
 ## Utilities
 
+### NewTestDataGenerator
+
+This is a significantly enhanced test generator (`org.neo4j.batchimport.NewTestDataGenerator`) replacing the earlier dumb random test data generator (`org.neo4j.batchimport.TestDataGenerator`).
+
+./generateNew.sh dir=<> nodes=<> relsPerNode=<> relTypes=<> sorted maxLabels=<> relTypes=<> columns=<> propsPerNode=<> propsPerRel=<> maxPropSize=<>:<> startNodeId=<> 
+
+<> --> user input
+Note that all these parameters can in any order and is not case sensitive.
+dir 		- location where nodes.csv and rels.csv is generated
+nodes 		- number of nodes
+relsPerNode - number of relationships per node
+relTypes	- number of relationship types
+maxLabels	- maximum number of labels 
+sorted		- sorted or unsorted data (default is unsorted)
+columns		- a tab separated column names
+propsPerNode- properties per node
+propsPerRel	- properties per relationship
+maxPropSize	- x:y, x is maximum size in bytes, y is percentage of properties > x in size
+startNodeId	- the lowest node id. Useful in creating multiple node and relationship files.
+ e.g.,
+./generateNew.sh dir=d:\data nodes=1000000000 relsPerNode=8 relTypes=20 maxlabels=10000 propsPerNode=3 propsPerRel=2 maxPropSize=32:5
+
 ### TestDataGenerator
 
 It is a dumb random test data generator (`org.neo4j.batchimport.TestDataGenerator`) that you can run with
@@ -357,7 +379,6 @@ It is a dumb random test data generator (`org.neo4j.batchimport.TestDataGenerato
 ./generate.sh #nodes #max-rels-per-node REL1,REL2,REL3 LABEL1,LABEL2,LABEL3
 
 Will generate nodes.csv and rels.csv for those numbers
-
 
 ### Relationship-Sorter
 
