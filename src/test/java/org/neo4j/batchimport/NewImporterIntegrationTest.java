@@ -30,7 +30,7 @@ public class NewImporterIntegrationTest {
     public void testMain() throws Exception {
         FileUtils.deleteRecursively(new File(DB_DIRECTORY));
         NewTestDataGenerator.main("dir="+System.getProperty("user.dir"),"nodes=10000","relsPerNode=10","relTypes=4","sorted");
-        NewImporter.main(DB_DIRECTORY,"nodes.csv","rels.csv");
+        Importer.main(DB_DIRECTORY,"nodes.csv","rels.csv");
         ConsistencyCheckTool.main(new String[]{DB_DIRECTORY});
     }
 
@@ -41,7 +41,7 @@ public class NewImporterIntegrationTest {
         String testData = "a\n000000F8BE951D6DE6480F4AFDFB670C553E47C0\r\n0000021449360C1A398ED9A18800B2B13AA098A4\r\n00000DABDE4C555FC82F7D534835247B94873C2C\r\n00001BE4128DB41729365A41D3AC1D019E5ED8A6\r\n";
         writer.write(testData);
         writer.close();
-        NewImporter.main(DB_DIRECTORY,"target/hashes.csv");
+        Importer.main(DB_DIRECTORY,"target/hashes.csv");
         ConsistencyCheckTool.main(new String[]{DB_DIRECTORY});
         GraphDatabaseService db = new GraphDatabaseFactory().newEmbeddedDatabase(DB_DIRECTORY);
         try (Transaction tx = db.beginTx()) {

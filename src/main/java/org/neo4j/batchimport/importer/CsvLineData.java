@@ -5,6 +5,8 @@ import au.com.bytecode.opencsv.CSVReader;
 import java.io.IOException;
 import java.io.Reader;
 
+
+
 import static org.neo4j.helpers.collection.MapUtil.map;
 
 public class CsvLineData extends AbstractLineData {

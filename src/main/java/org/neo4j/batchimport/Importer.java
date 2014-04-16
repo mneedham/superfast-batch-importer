@@ -1,44 +1,50 @@
 package org.neo4j.batchimport;
 
+import java.io.*;
+import java.sql.Timestamp;
+import java.util.*;
+
+
 import org.neo4j.batchimport.importer.ChunkerLineData;
 import org.neo4j.batchimport.importer.CsvLineData;
-import org.neo4j.batchimport.importer.RelType;
-import org.neo4j.batchimport.importer.Type;
+import org.neo4j.batchimport.importer.stages.*;
+import org.neo4j.batchimport.importer.structs.*;
+import org.neo4j.batchimport.importer.structs.Constants.ImportStageState;
+import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.batchimport.index.MapDbCachingIndexProvider;
 import org.neo4j.batchimport.utils.Config;
-import org.neo4j.graphdb.DynamicLabel;
-import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.index.IndexManager;
 import org.neo4j.index.lucene.unsafe.batchinsert.LuceneBatchInserterIndexProvider;
+import org.neo4j.kernel.api.Exceptions.BatchImportException;
 import org.neo4j.kernel.impl.util.FileUtils;
-import org.neo4j.unsafe.batchinsert.BatchInserter;
-import org.neo4j.unsafe.batchinsert.BatchInserters;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndexProvider;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
-
-import java.io.*;
-import java.util.*;
-import java.util.zip.GZIPInputStream;
-
+import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 import static org.neo4j.batchimport.Utils.join;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.EXACT_CONFIG;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.FULLTEXT_CONFIG;
 
 public class Importer {
     private static final Map<String, String> SPATIAL_CONFIG = Collections.singletonMap(IndexManager.PROVIDER,"spatial");
-    private static final Label[] NO_LABELS = new Label[0];
-    public static final int BATCH = 10 * 1000 * 1000;
+    public static final int BATCH =  1 * 1000 * 1000;
     private static Report report;
     private final Config config;
-    private BatchInserter db;
     private BatchInserterIndexProvider indexProvider;
     Map<String,BatchInserterIndex> indexes=new HashMap<String, BatchInserterIndex>();
-    private Label[] labelsArray = NO_LABELS;
+    public static long startImport = 0;
+    
+    private BatchInserterImplNew db;
+    private Stages importStages = null;
+    private NodesCache nodeCache = null;
+    private boolean relationLinkbackNeeded = false;
+    private ImportStageState importStageState = ImportStageState.Uninitialized;
 
     public Importer(File graphDb, final Config config) {
         this.config = config;
+		Timestamp ts = new Timestamp(System.currentTimeMillis());
+        System.out.println("[Current time:"+ts.toString()+"][Compile Time:"+Utils.getVersionfinal(this.getClass())+"]");
+    	setDebugInfo(config);
         db = createBatchInserter(graphDb, config);
-
         final boolean luceneOnlyIndex = config.isCachedIndexDisabled();
         indexProvider = createIndexProvider(luceneOnlyIndex);
         Collection<IndexInfo> indexInfos = config.getIndexInfos();
@@ -48,139 +54,52 @@ public class Importer {
                 indexes.put(indexInfo.indexName, index);
             }
         }
-
         report = createReport();
     }
 
     protected StdOutReport createReport() {
-        return new StdOutReport(BATCH, 100);
+        return new StdOutReport(BATCH, 1);
     }
 
     protected BatchInserterIndexProvider createIndexProvider(boolean luceneOnlyIndex) {
         return luceneOnlyIndex ? new LuceneBatchInserterIndexProvider(db) : new MapDbCachingIndexProvider(db);
     }
 
-    protected BatchInserter createBatchInserter(File graphDb, Config config) {
-        return BatchInserters.inserter(graphDb.getAbsolutePath(), config.getConfigData());
+    protected BatchInserterImplNew createBatchInserter(File graphDb, Config config) {
+    	return new BatchInserterImplNew(graphDb.getAbsolutePath(), config.getConfigData());
     }
 
-    // todo multiple nodes and rels files
-    // todo nodes and rels-files in config
-    // todo graphdb in config
     public static void main(String... args) throws IOException {
-        System.err.println("Usage: Importer data/dir nodes.csv relationships.csv [node_index node-index-name fulltext|exact nodes_index.csv rel_index rel-index-name fulltext|exact rels_index.csv ....]");
-        System.err.println("Using: Importer "+join(args," "));
-        System.err.println();
+    	startImport= System.currentTimeMillis();
+    	System.err.println("New Importer - parallel and scalable");
+    	System.err.println("Usage: NewImporter data/dir nodes.csv relationships.csv [node_index node-index-name fulltext|exact nodes_index.csv rel_index rel-index-name fulltext|exact rels_index.csv ....]");
+    	System.err.println("Using: NewImporter "+join(args," "));
+    	System.err.println();
 
-        final Config config = Config.convertArgumentsToConfig(args);
+    	final Config config = Config.convertArgumentsToConfig(args);
 
-        File graphDb = new File(config.getGraphDbDirectory());
-        if (graphDb.exists() && !config.keepDatabase()) {
-            FileUtils.deleteRecursively(graphDb);
-        }
+    	File graphDb = new File(config.getGraphDbDirectory());
+    	if (graphDb.exists() && !config.keepDatabase()) {
+    		FileUtils.deleteRecursively(graphDb);
+    	}
 
-        Importer importer = new Importer(graphDb, config);
-        importer.doImport();
+    	Importer importer = new Importer(graphDb, config);
+    	importer.doImport();
+    	System.out.println("Total time taken: "+(System.currentTimeMillis()-startImport));
     }
-
+ 
     void finish() {
+    	if (importStages != null && importStages.getState() != ImportStageState.Exited)
+    		importStages.stop();
         indexProvider.shutdown();
         db.shutdown();
         report.finish();
     }
 
-    void importNodes(Reader reader) throws IOException {
-        final LineData data = createLineData(reader, 0);
-        report.reset();
-        boolean hasId = data.hasId();
-        while (data.processLine(null)) {
-            String[] labels = data.getTypeLabels();
-            long id;
-            if (hasId) {
-                id = data.getId();
-                db.createNode(id, data.getProperties(),labelsFor(labels));
-            } else {
-                id = db.createNode(data.getProperties(),labelsFor(labels));
-            }
-            for (Map.Entry<String, Map<String, Object>> entry : data.getIndexData().entrySet()) {
-                final BatchInserterIndex index = indexFor(entry.getKey());
-                if (index==null)
-                    throw new IllegalStateException("Index "+entry.getKey()+" not configured.");
-                index.add(id, entry.getValue());
-            }
-            report.dots();
-
-            if (report.getCount() % BATCH == 0) flushIndexes();
-        }
-        flushIndexes();
-        report.finishImport("Nodes");
-    }
-
-    private Label[] labelsFor(String[] labels) {
-        if (labels == null || labels.length == 0) return NO_LABELS;
-        if (labels.length != labelsArray.length) labelsArray = new Label[labels.length];
-        for (int i = labels.length - 1; i >= 0; i--) {
-            if (labelsArray[i] == null || !labelsArray[i].name().equals(labels[i]))
-                labelsArray[i] = DynamicLabel.label(labels[i]);
-        }
-        return labelsArray;
-    }
-
-    private long lookup(String index,String property,Object value) {
-        Long id = indexFor(index).get(property, value).getSingle();
-        return id==null ? -1 : id;
-    }
-
-    private BatchInserterIndex indexFor(String index) {
-        return indexes.get(index);
-    }
-
-    void importRelationships(Reader reader) throws IOException {
-        final int offset = 3;
-        final LineData data = createLineData(reader, offset);
-        final RelType relType = new RelType();
-        long skipped=0;
-        report.reset();
-
-        while (data.processLine(null)) {
-            final Map<String, Object> properties = data.getProperties();
-            final long start = id(data, 0);
-            final long end = id(data, 1);
-            if (start==-1 || end==-1) {
-                skipped++;
-                continue;
-            }
-            final RelType type = relType.update(data.getRelationshipTypeLabel());
-            final long id = db.createRelationship(start, end, type, properties);
-            for (Map.Entry<String, Map<String, Object>> entry : data.getIndexData().entrySet()) {
-                indexFor(entry.getKey()).add(id, entry.getValue());
-            }
-            report.dots();
-        }
-        String msg = "Relationships";
-        if (skipped > 0) msg += " skipped (" + skipped + ")";
-        report.finishImport(msg);
-    }
-
-    private void flushIndexes() {
-        for (BatchInserterIndex index : indexes.values()) {
-            index.flush();
-        }
-    }
-
     private LineData createLineData(Reader reader, int offset) {
         final boolean useQuotes = config.quotesEnabled();
-        if (useQuotes) return new CsvLineData(reader, config.getDelimChar(this),offset);
-        return new ChunkerLineData(reader, config.getDelimChar(this), offset);
-    }
-
-    private long id(LineData data, int column) {
-        final LineData.Header header = data.getHeader()[column];
-        final Object value = data.getValue(column);
-        if (header.indexName == null || header.type == Type.ID) {
-            return id(value);
-        }
-        return lookup(header.indexName, header.name, value);
+        if (useQuotes) return new CsvLineData(reader, config.getDelimChar(),offset);
+        return new ChunkerLineData(reader, config.getDelimChar(), offset);
     }
 
     void importIndex(String indexName, BatchInserterIndex index, Reader reader) throws IOException {
@@ -219,40 +138,146 @@ public class Importer {
             System.err.println("Index file "+indexFile+" does not exist");
             return;
         }
-        importIndex(indexInfo.indexName, indexes.get(indexInfo.indexName), createFileReader(indexFile));
+        importIndex(indexInfo.indexName, indexes.get(indexInfo.indexName), Utils.createFileReader(indexFile));
     }
-
+    
+    private void report(String header, long prevTime){
+    	if (prevTime == -1)
+    		System.out.println(Utils.getCurrentTimeStamp()+header);
+    	else
+    		System.out.println(Utils.getCurrentTimeStamp()+header +(System.currentTimeMillis()- prevTime)/1000+ " secs - ["+Utils.getMaxIds(db.getNeoStore())+"]");
+    }
     private void doImport() throws IOException {
-        try {
-            for (File file : config.getNodesFiles()) {
-                importNodes(createFileReader(file));
-            }
+    	long stepTime = System.currentTimeMillis();
+    	long milestone = stepTime;
+    	try {
+    		for (File file : config.getNodesFiles()) {
+    			importNodes(Utils.createFileReader(file));
+    			report("\tNode file ["+file.getName()+"] imported in ", stepTime);
+    			stepTime = System.currentTimeMillis();
+    		}
+    		report("Node Import complete in ", milestone);
+    		stepTime = milestone = System.currentTimeMillis();
 
-            for (File file : config.getRelsFiles()) {
-                importRelationships(createFileReader(file));
-            }
-
-            for (IndexInfo indexInfo : config.getIndexInfos()) {
-                if (indexInfo.shouldImportFile()) importIndex(indexInfo);
-            }
-		} finally {
-            finish();
-        }
+    		for (File file : config.getRelsFiles()) {
+    			importRelationships(Utils.createFileReader(file));
+    			report("\tRelationship file ["+file.getName()+"] imported in ", stepTime);
+    			stepTime = System.currentTimeMillis();
+    		}
+    		importStages.stop();
+    		if (relationLinkbackNeeded)
+    		db.linkBackRelationships();
+    		report("Relationship Import complete in " , milestone);
+    		report("Import complete with Indexing pending in " , startImport);
+    		for (IndexInfo indexInfo : config.getIndexInfos()) {
+    			if (indexInfo.shouldImportFile()) importIndex(indexInfo);
+    		} 
+    	} catch (BatchImportException be){            	
+    		report("[Batch Import failed]"+be.getMessage(), -1);
+    	}
+    	finally {
+    		finish();
+    	}
     }
 
-    final static int BUFFERED_READER_BUFFER = 4096*512;
-
-    private Reader createFileReader(File file) {
-        try {
-            final String fileName = file.getName();
-            if (fileName.endsWith(".gz") || fileName.endsWith(".zip")) {
-                return new InputStreamReader(new GZIPInputStream(new BufferedInputStream(new FileInputStream(file)),BUFFERED_READER_BUFFER));
-            }
-            final FileReader fileReader = new FileReader(file);
-            return new BufferedReader(fileReader,BUFFERED_READER_BUFFER);
-        } catch(Exception e) {
-            throw new IllegalArgumentException("Error reading file "+file+" "+e.getMessage(),e);
-        }
+    private WriterStage setWriterStage(Stages importStages) throws BatchImportException{	
+    	WriterStage writerStage = new WriterStage(importStages);
+    	Class[] parameterTypes = new Class[1];
+    	parameterTypes[0] = DiskRecordsBuffer.class;
+    	try {
+    	writerStage.init(StageMethods.WriterStage.class.getMethod("writeProperty", parameterTypes),
+    			//StageMethods.WriterStage.class.getMethod("writeProperty", parameterTypes),
+    			StageMethods.WriterStage.class.getMethod("writeNode", parameterTypes),
+    			StageMethods.WriterStage.class.getMethod("writeRelationship", parameterTypes)
+    			);
+    	} catch (Exception e){
+    		throw new BatchImportException("[Writer setup failed]"+e.getMessage());
+    	} 
+    	return writerStage;
     }
 
+    private Stages setupStages() throws BatchImportException{
+    	Stages importStages = new Stages(new StageMethods(db, db, indexes));
+		WriterStage writerStage = setWriterStage(importStages);
+		db.setDiskBlockingQ(writerStage.getDiskBlockingQ());
+		importStages.setDataBuffers(writerStage.getDiskRecordsCache());
+		writerStage.start();
+		return importStages;
+    }
+    public void importNodes(Reader reader)throws BatchImportException{
+    	if (importStages == null)
+    		importStages = setupStages();
+    	if (importStages.getState() != ImportStageState.NodeImport)
+    		setupStagesForNodes();
+    	importNew(reader, 0);
+    }
+    public void importRelationships(Reader reader)throws BatchImportException{
+    	if (importStages == null)
+    		importStages = setupStages();
+    	if (importStages.getState() != ImportStageState.RelationshipImport)
+    		setupStagesForRelationships();	
+    	importNew(reader, 3);
+    }
+    private void importNew(Reader reader, int offset){
+    	ReadFileData input = new ReadFileData( new BufferedReader(reader,Constants.BUFFERED_READER_BUFFER), 
+				config.getDelimChar(), offset, config.quotesEnabled());
+    	db.setDataInput(input);
+    	importStages.start(input);
+		importStages.pollResults(db);
+    }
+    
+    private void setupStagesForNodes()throws BatchImportException{	
+		try {
+    		Class[] parameterTypes = new Class[2];
+    		parameterTypes[0] = ReadFileData.class;
+    		parameterTypes[1] = CSVDataBuffer.class;
+    		importStages.init(Constants.NODE, StageMethods.ImportNode.class.getMethod("stage0", parameterTypes),
+    				StageMethods.ImportNode.class.getMethod("stage1", parameterTypes),
+    				StageMethods.ImportNode.class.getMethod("stage2", parameterTypes),
+    				StageMethods.ImportNode.class.getMethod("stage3", parameterTypes),
+    				StageMethods.ImportNode.class.getMethod("stage4", parameterTypes));
+    		importStages.setSingleThreaded(false, true, false, false, false);
+    		importStageState = ImportStageState.NodeImport;
+    	}catch (Exception e){
+    		throw new BatchImportException("[Nodes setup failed]"+e.getMessage());
+    	} 
+    }
+    
+    private void setupStagesForRelationships()throws BatchImportException{
+    	nodeCache = new NodesCache(db.getNeoStore().getNodeStore().getHighId());
+		db.setNodesCache(nodeCache);
+    	relationLinkbackNeeded = true;
+		try {
+    		Class[] parameterTypes = new Class[2];
+    		parameterTypes[0] = ReadFileData.class;
+    		parameterTypes[1] = CSVDataBuffer.class;
+    		importStages.init(Constants.RELATIONSHIP, StageMethods.ImportRelationship.class.getMethod("stage0", parameterTypes),
+    				StageMethods.ImportRelationship.class.getMethod("stage1", parameterTypes),
+    				StageMethods.ImportRelationship.class.getMethod("stage2", parameterTypes),
+    				StageMethods.ImportRelationship.class.getMethod("stage3", parameterTypes),
+    				StageMethods.ImportRelationship.class.getMethod("stage4", parameterTypes));
+    		importStages.setSingleThreaded(false,true,false,true,false);
+    	}catch (Exception e){
+    		throw new BatchImportException("[Relationship setup failed]"+e.getMessage());
+    	} 
+    }
+    
+    private void setDebugInfo(Config config){
+    	String debug = config.get(Config.BATCH_IMPORT_DEBUG_MODE);
+    	if (debug != null){
+    		String[] parts = debug.split(":");
+    		if (parts[0].equalsIgnoreCase("debug")){
+    			Constants.debugData = true;
+    			try {
+    				if (parts.length > 1)   				
+    					Constants.printPollInterval = Integer.parseInt(parts[1]) * 1000;
+    				if (parts.length > 2)   				
+    					Constants.progressPollInterval = Integer.parseInt(parts[2]) * 1000;
+    			} catch (Exception e){
+    				//do nothing, just ignore and leave the setting at default
+    			}
+    			System.out.println("Debug Mode [Poll interval:"+Constants.printPollInterval/1000+" secs][Progess interval:"+Constants.progressPollInterval/1000+" secs]");
+    		}
+    	}
+    }
 }

@@ -2,7 +2,6 @@ package org.neo4j.kernel.impl.nioneo.store.labels;
 
 import org.junit.Test;
 import org.mockito.Mockito;
-import org.neo4j.batchimport.handlers.LabelIdEncodingHandler;
 import org.neo4j.kernel.impl.nioneo.store.DynamicRecord;
 import org.neo4j.kernel.impl.nioneo.store.NodeRecord;
 
@@ -12,7 +11,7 @@ import java.util.List;
 import static java.util.Arrays.copyOf;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.eq;
-import static org.neo4j.batchimport.handlers.LabelIdEncodingHandler.LABEL_BITS;
+
 
 /**
  * @author Michael Hunger @since 02.11.13
@@ -48,18 +47,6 @@ public class InlineNodeLabelsTest {
         boolean result = inlineNodeLabels.tryInlineInNodeRecord(new long[] {}, NONE);
         assertEquals(true,result);
         Mockito.verify(nodeRecord).setLabelField(eq(0L), eq(NONE));
-    }
-    @Test
-    public void testEncodeSingleLabel() throws Exception {
-        boolean result = inlineNodeLabels.tryInlineInNodeRecord(new long[] {3}, NONE);
-        assertEquals(true,result);
-        Mockito.verify(nodeRecord).setLabelField(eq(1L << LABEL_BITS | 3L), eq(NONE));
-    }
-    @Test
-    public void testEncodeTwoLabels() throws Exception {
-        boolean result = inlineNodeLabels.tryInlineInNodeRecord(new long[] {3,2}, NONE);
-        assertEquals(true, result);
-        Mockito.verify(nodeRecord).setLabelField(eq(2L << LABEL_BITS | 2L << LABEL_BITS / 2 | 3L), eq(NONE));
     }
 
     @Test

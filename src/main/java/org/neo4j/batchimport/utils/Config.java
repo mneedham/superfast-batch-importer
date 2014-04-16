@@ -1,6 +1,5 @@
 package org.neo4j.batchimport.utils;
 
-import org.neo4j.batchimport.Importer;
 import org.neo4j.batchimport.IndexInfo;
 import org.neo4j.helpers.collection.MapUtil;
 
@@ -178,11 +177,6 @@ public class Config {
         return toFiles(get(BATCH_IMPORT_NODES_FILES));
     }
 
-    public char getDelimChar(Importer importer) {
-        final String delim = get(BATCH_IMPORT_CSV_DELIM);
-        if (delim==null || delim.isEmpty()) return '\t';
-        return delim.trim().charAt(0);
-    }
     public char getDelimChar() {
         final String delim = get(BATCH_IMPORT_CSV_DELIM);
         if (delim==null || delim.isEmpty()) return '\t';

@@ -1,6 +1,8 @@
 package org.neo4j.batchimport.importer;
 
 import org.junit.Test;
+import org.neo4j.batchimport.importer.CsvLineData;
+import org.neo4j.batchimport.importer.Type;
 
 import java.io.StringReader;
 import java.util.Collections;
