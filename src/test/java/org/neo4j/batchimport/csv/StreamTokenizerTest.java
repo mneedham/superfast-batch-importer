@@ -1,9 +1,12 @@
 package org.neo4j.batchimport.csv;
 
-import org.junit.Test;
-import org.neo4j.batchimport.utils.Chunker;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.StringReader;
 
-import java.io.*;
+import org.junit.Test;
+
+import org.neo4j.batchimport.utils.Chunker;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -12,35 +15,38 @@ import static org.junit.Assert.assertTrue;
  * @author mh
  * @since 13.11.12
  */
-public class StreamTokenizerTest {
-    
+public class StreamTokenizerTest
+{
+
     String file = "FROM\tTO\tTYPE\tNAME\tAGE:INT\n"
-                  +"1\t2\tKNOWS\tFOO\t42\n"
-                  +"1\t2\tKNOWS\t\t42"
-            ;
+            + "1\t2\tKNOWS\tFOO\t42\n"
+            + "1\t2\tKNOWS\t\t42";
 
     @Test
-    public void testReadHeader() throws Exception {
-        final BufferedReader reader = new BufferedReader(new StringReader(file));
-        final String[] header = reader.readLine().split("\t");
-        final Chunker chunker = new Chunker(reader, '\t');
-        readLine(header, chunker, "FOO", "42");
-        readLine(header, chunker, "", "42");
-        assertEquals(Chunker.EOF,chunker.nextWord());
+    public void testReadHeader() throws Exception
+    {
+        final BufferedReader reader = new BufferedReader( new StringReader( file ) );
+        final String[] header = reader.readLine().split( "\t" );
+        final Chunker chunker = new Chunker( reader, '\t' );
+        readLine( header, chunker, "FOO", "42" );
+        readLine( header, chunker, "", "42" );
+        assertEquals( Chunker.EOF, chunker.nextWord() );
     }
 
-    private void readLine(String[] header, Chunker st, Object...values) throws IOException {
-        long from = Long.parseLong(st.nextWord());
-        assertEquals(1,from);
-        long to = Long.parseLong(st.nextWord());
-        assertEquals(2,to);
+    private void readLine( String[] header, Chunker st, Object... values ) throws IOException
+    {
+        long from = Long.parseLong( st.nextWord() );
+        assertEquals( 1, from );
+        long to = Long.parseLong( st.nextWord() );
+        assertEquals( 2, to );
         String type = st.nextWord();
-        assertEquals("KNOWS", type);
+        assertEquals( "KNOWS", type );
 
-        for (int i = 3; i < header.length; i++) {
-            assertEquals(header[i], values[i - 3], st.nextWord());
+        for ( int i = 3; i < header.length; i++ )
+        {
+            assertEquals( header[i], values[i - 3], st.nextWord() );
         }
         String token = st.nextWord();
-        assertTrue(Chunker.EOL==token || Chunker.EOF==token);
+        assertTrue( Chunker.EOL == token || Chunker.EOF == token );
     }
 }

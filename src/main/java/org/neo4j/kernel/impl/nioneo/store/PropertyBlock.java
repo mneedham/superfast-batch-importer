@@ -19,13 +19,13 @@
  */
 package org.neo4j.kernel.impl.nioneo.store;
 
-import org.neo4j.kernel.api.properties.DefinedProperty;
-
 import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+
+import org.neo4j.kernel.api.properties.DefinedProperty;
 
 public class PropertyBlock implements Cloneable
 {
@@ -72,7 +72,8 @@ public class PropertyBlock implements Cloneable
         light = true;
     }
 
-    public void clean() {
+    public void clean()
+    {
         valueBlocks = EMPTY_LONG_ARRAY;
         valueRecords.clear();
         light = true;
@@ -104,17 +105,17 @@ public class PropertyBlock implements Cloneable
 
     public int getSingleValueInt()
     {
-        return (int)((valueBlocks[0] & 0x0FFFFFFFF0000000L) >>> 28);
+        return (int) ((valueBlocks[0] & 0x0FFFFFFFF0000000L) >>> 28);
     }
 
     public short getSingleValueShort()
     {
-        return (short)((valueBlocks[0] & 0x00000FFFF0000000L) >>> 28);
+        return (short) ((valueBlocks[0] & 0x00000FFFF0000000L) >>> 28);
     }
 
     public byte getSingleValueByte()
     {
-        return (byte)((valueBlocks[0] & 0x0000000FF0000000L) >>> 28);
+        return (byte) ((valueBlocks[0] & 0x0000000FF0000000L) >>> 28);
     }
 
     public long[] getValueBlocks()
@@ -130,8 +131,8 @@ public class PropertyBlock implements Cloneable
     public void setValueBlocks( long[] blocks )
     {
         int expectedPayloadSize = PropertyType.getPayloadSizeLongs();
-        assert ( blocks == null || blocks.length <= expectedPayloadSize) : (
-                "I was given an array of size " + blocks.length +", but I wanted it to be " + expectedPayloadSize );
+        assert (blocks == null || blocks.length <= expectedPayloadSize) : (
+                "I was given an array of size " + blocks.length + ", but I wanted it to be " + expectedPayloadSize);
         this.valueBlocks = blocks;
         valueRecords.clear();
         light = true;
@@ -153,7 +154,7 @@ public class PropertyBlock implements Cloneable
     @Override
     public String toString()
     {
-        StringBuilder result = new StringBuilder("PropertyBlock[");
+        StringBuilder result = new StringBuilder( "PropertyBlock[" );
         PropertyType type = getType();
         if ( valueBlocks != null )
         {
@@ -165,32 +166,33 @@ public class PropertyBlock implements Cloneable
         {
             switch ( type )
             {
-            case STRING:
-            case ARRAY:
-                result.append( ",firstDynamic=" ).append( getSingleValueLong() );
-                break;
-            default:
-                Object value = type.getValue( this, null );
-                if ( value != null && value.getClass().isArray() )
-                {
-                    int length = Array.getLength( value );
-                    StringBuilder buf = new StringBuilder( value.getClass().getComponentType().getSimpleName() ).append( "[" );
-                    for ( int i = 0; i < length && i <= MAX_ARRAY_TOSTRING_SIZE; i++ )
+                case STRING:
+                case ARRAY:
+                    result.append( ",firstDynamic=" ).append( getSingleValueLong() );
+                    break;
+                default:
+                    Object value = type.getValue( this, null );
+                    if ( value != null && value.getClass().isArray() )
                     {
-                        if ( i != 0 )
+                        int length = Array.getLength( value );
+                        StringBuilder buf = new StringBuilder( value.getClass().getComponentType().getSimpleName() )
+                                .append( "[" );
+                        for ( int i = 0; i < length && i <= MAX_ARRAY_TOSTRING_SIZE; i++ )
                         {
-                            buf.append( "," );
+                            if ( i != 0 )
+                            {
+                                buf.append( "," );
+                            }
+                            buf.append( Array.get( value, i ) );
                         }
-                        buf.append( Array.get( value, i ) );
+                        if ( length > MAX_ARRAY_TOSTRING_SIZE )
+                        {
+                            buf.append( ",..." );
+                        }
+                        value = buf.append( "]" );
                     }
-                    if ( length > MAX_ARRAY_TOSTRING_SIZE )
-                    {
-                        buf.append( ",..." );
-                    }
-                    value = buf.append( "]" );
-                }
-                result.append( ",value=" ).append( value );
-                break;
+                    result.append( ",value=" ).append( value );
+                    break;
             }
         }
         if ( !isLight() )

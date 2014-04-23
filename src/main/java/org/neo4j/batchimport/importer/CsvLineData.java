@@ -1,39 +1,46 @@
 package org.neo4j.batchimport.importer;
 
-import au.com.bytecode.opencsv.CSVReader;
-
 import java.io.IOException;
 import java.io.Reader;
 
+import au.com.bytecode.opencsv.CSVReader;
 
-
-import static org.neo4j.helpers.collection.MapUtil.map;
-
-public class CsvLineData extends AbstractLineData {
+public class CsvLineData extends AbstractLineData
+{
     private final CSVReader csvReader;
 
-    public CsvLineData(Reader reader, char delim, int offset) {
-        super(offset);
-        this.csvReader = new CSVReader(reader, delim,'"','\\',0,false,false);
-        initHeaders(createHeaders(readRawRow()));
-        createMapData(lineSize, offset);
+    public CsvLineData( Reader reader, char delim, int offset )
+    {
+        super( offset );
+        this.csvReader = new CSVReader( reader, delim, '"', '\\', 0, false, false );
+        initHeaders( createHeaders( readRawRow() ) );
+        createMapData( lineSize, offset );
     }
 
     @Override
-    protected String[] readRawRow() {
-        try {
+    protected String[] readRawRow()
+    {
+        try
+        {
             return csvReader.readNext();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        }
+        catch ( IOException e )
+        {
+            throw new RuntimeException( e );
         }
     }
 
-    protected boolean readLine() {
+    protected boolean readLine()
+    {
         final String[] row = readRawRow();
-        if (row==null || row.length==0) return false;
-        for (int i = 0; i < row.length && i < lineSize; i++) {
+        if ( row == null || row.length == 0 )
+        {
+            return false;
+        }
+        for ( int i = 0; i < row.length && i < lineSize; i++ )
+        {
             String value = row[i];
-            lineData[i] = value == null || value.isEmpty() ? null : convert(i, value);
+            lineData[i] = value == null || value.isEmpty() ? null : convert( i, value );
         }
         return true;
     }

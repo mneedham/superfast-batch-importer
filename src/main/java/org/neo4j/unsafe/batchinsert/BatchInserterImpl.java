@@ -54,7 +54,6 @@ import org.neo4j.kernel.StoreLocker;
 import org.neo4j.kernel.api.constraints.UniquenessConstraint;
 import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.api.index.IndexConfiguration;
-import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.api.index.IndexEntryConflictException;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.InternalIndexState;
@@ -333,7 +332,7 @@ public class BatchInserterImpl implements BatchInserter
 
     private void repopulateAllIndexes() throws IOException
     {
-    	final IndexRule[] rules = getIndexesNeedingPopulation();
+        final IndexRule[] rules = getIndexesNeedingPopulation();
         final IndexPopulator[] populators = new IndexPopulator[rules.length];
         // the store is uncontended at this point, so creating a local LockService is safe.
         LockService locks = new ReentrantLockService();
@@ -348,10 +347,10 @@ public class BatchInserterImpl implements BatchInserter
             labelIds[i] = rule.getLabel();
             propertyKeyIds[i] = rule.getPropertyKey();
 
-            populators[i] = schemaIndexProviders.apply( 
-            		rule.getProviderDescriptor() ).getPopulator(rule.getId(),
-            				//new IndexDescriptor(labelIds[i], propertyKeyIds[i]),
-            				new IndexConfiguration( rule.isConstraintIndex() ) );
+            populators[i] = schemaIndexProviders.apply(
+                    rule.getProviderDescriptor() ).getPopulator( rule.getId(),
+                    //new IndexDescriptor(labelIds[i], propertyKeyIds[i]),
+                    new IndexConfiguration( rule.isConstraintIndex() ) );
             populators[i].create();
         }
 
@@ -414,7 +413,7 @@ public class BatchInserterImpl implements BatchInserter
         private void writeAndResetBatch() throws IOException
         {
             labelScanStore.updateAndCommit( iterator( cursor, updateBatch ) );
-        	//labelScanStore.recover( iterator( cursor, updateBatch ) );
+            //labelScanStore.recover( iterator( cursor, updateBatch ) );
             cursor = 0;
         }
 
@@ -562,7 +561,9 @@ public class BatchInserterImpl implements BatchInserter
         return primitiveChanged;
     }
 
-    /** @return true if the passed primitive needs updating in the store. */
+    /**
+     * @return true if the passed primitive needs updating in the store.
+     */
     private boolean setPrimitiveProperty( PrimitiveRecord primitive,
                                           String name,
                                           Object value )
@@ -628,7 +629,7 @@ public class BatchInserterImpl implements BatchInserter
          * we will not be able to re-use those records to store the new property,
          * release the old records.
          */
-        if( thatHas != null && thatFits != thatHas )
+        if ( thatHas != null && thatFits != thatHas )
         {
             PropertyBlock removed = thatHas.removePropertyBlock( index );
             getPropertyStore().ensureHeavy( removed );
@@ -1338,28 +1339,41 @@ public class BatchInserterImpl implements BatchInserter
         return idGeneratorFactory;
     }
 
-    public NeoStore getNeoStore() {
+    public NeoStore getNeoStore()
+    {
         return neoStore;
     }
-    public int createAllPropertyIndexes(Collection<String> names) {
-        int max=0;
-        for (String name : names) {
-            if (getPropertyKeyId(name) != -1) continue;
+
+    public int createAllPropertyIndexes( Collection<String> names )
+    {
+        int max = 0;
+        for ( String name : names )
+        {
+            if ( getPropertyKeyId( name ) != -1 )
+            {
+                continue;
+            }
             max = createNewPropertyKeyId( name );
         }
         return max;
     }
 
-    public int createAllRelTypeIndexes(Collection<String> types) {
-        int max=0;
-        for (String type : types) {
-            if (getRelTypeId(type) != -1) continue;
-            max = createNewRelationshipType(type);
+    public int createAllRelTypeIndexes( Collection<String> types )
+    {
+        int max = 0;
+        for ( String type : types )
+        {
+            if ( getRelTypeId( type ) != -1 )
+            {
+                continue;
+            }
+            max = createNewRelationshipType( type );
         }
         return max;
     }
 
-    public int getRelTypeId(String name) {
+    public int getRelTypeId( String name )
+    {
         return relationshipTypeTokens.idOf( name );
     }
 

@@ -52,7 +52,8 @@ public abstract class CommonAbstractStore implements IdSequence
 
         public static final Setting<Boolean> read_only = GraphDatabaseSettings.read_only;
         public static final Setting<Boolean> backup_slave = GraphDatabaseSettings.backup_slave;
-        public static final Setting<Boolean> use_memory_mapped_buffers = GraphDatabaseSettings.use_memory_mapped_buffers;
+        public static final Setting<Boolean> use_memory_mapped_buffers = GraphDatabaseSettings
+                .use_memory_mapped_buffers;
     }
 
     public static final String ALL_STORES_VERSION = "v0.A.1";
@@ -81,12 +82,12 @@ public abstract class CommonAbstractStore implements IdSequence
      * Opens and validates the store contained in <CODE>fileName</CODE>
      * loading any configuration defined in <CODE>config</CODE>. After
      * validation the <CODE>initStorage</CODE> method is called.
-     * <p>
+     * <p/>
      * If the store had a clean shutdown it will be marked as <CODE>ok</CODE>
      * and the {@link #getStoreOk()} method will return true.
      * If a problem was found when opening the store the {@link #makeStoreOk()}
      * must be invoked.
-     *
+     * <p/>
      * throws IOException if the unable to open the storage or if the
      * <CODE>initStorage</CODE> method fails
      *
@@ -163,8 +164,8 @@ public abstract class CommonAbstractStore implements IdSequence
                 if ( fileLock == null )
                 {
                     throw new IllegalStateException( "Unable to lock store ["
-                                                     + storageFileName + "], this is usually a result of some "
-                                                     + "other Neo4j kernel running using the same store." );
+                            + storageFileName + "], this is usually a result of some "
+                            + "other Neo4j kernel running using the same store." );
                 }
             }
         }
@@ -175,8 +176,8 @@ public abstract class CommonAbstractStore implements IdSequence
         catch ( OverlappingFileLockException e )
         {
             throw new IllegalStateException( "Unable to lock store [" + storageFileName +
-                                             "], this is usually caused by another Neo4j kernel already running in " +
-                                             "this JVM for this particular store" );
+                    "], this is usually caused by another Neo4j kernel already running in " +
+                    "this JVM for this particular store" );
         }
     }
 
@@ -210,7 +211,7 @@ public abstract class CommonAbstractStore implements IdSequence
         loadIdGenerator();
 
         this.windowPool = windowPoolFactory.create( getStorageFileName(), getEffectiveRecordSize(),
-                                                    getFileChannel(), configuration, stringLogger );
+                getFileChannel(), configuration, stringLogger );
     }
 
     protected abstract int getEffectiveRecordSize();
@@ -273,25 +274,27 @@ public abstract class CommonAbstractStore implements IdSequence
             if ( foundTypeDescriptorAndVersion.startsWith( getTypeDescriptor() ) )
             {
                 throw new NotCurrentStoreVersionException( ALL_STORES_VERSION, foundTypeDescriptorAndVersion, "",
-                                                           false );
+                        false );
             }
             else
             {
                 setStoreNotOk( new IllegalStateException(
                         "Unexpected version " + foundTypeDescriptorAndVersion + ", expected " +
-                        expectedTypeDescriptorAndVersion ) );
+                                expectedTypeDescriptorAndVersion ) );
             }
         }
     }
 
-    /** Should rebuild the id generator from scratch. */
+    /**
+     * Should rebuild the id generator from scratch.
+     */
     protected abstract void rebuildIdGenerator();
 
     /**
      * This method should close/release all resources that the implementation of
      * this store has allocated and is called just before the <CODE>close()</CODE>
      * method returns. Override this method to clean up stuff the constructor.
-     * <p>
+     * <p/>
      * This default implementation does nothing.
      */
     protected void closeStorage()
@@ -432,7 +435,7 @@ public abstract class CommonAbstractStore implements IdSequence
         {
             throw new InvalidRecordException(
                     "Position[" + position + "] requested for high id[" + getHighId() + "], store is ok[" + storeOk +
-                    "] recovery[" + isInRecoveryMode() + "]", causeOfStoreNotOk );
+                            "] recovery[" + isInRecoveryMode() + "]", causeOfStoreNotOk );
         }
         return windowPool.acquire( position, type );
     }
@@ -480,7 +483,9 @@ public abstract class CommonAbstractStore implements IdSequence
         return storageFileName;
     }
 
-    /** Opens the {@link IdGenerator} used by this store. */
+    /**
+     * Opens the {@link IdGenerator} used by this store.
+     */
     protected void openIdGenerator()
     {
         idGenerator = openIdGenerator( new File( storageFileName.getPath() + ".id" ), idType.getGrabSize() );
@@ -511,7 +516,7 @@ public abstract class CommonAbstractStore implements IdSequence
         try
         {
             idGenerator = new ReadOnlyIdGenerator( storageFileName + ".id",
-                                                   fileChannel.size() / recordSize );
+                    fileChannel.size() / recordSize );
         }
         catch ( IOException e )
         {
@@ -519,7 +524,9 @@ public abstract class CommonAbstractStore implements IdSequence
         }
     }
 
-    /** Closed the {@link IdGenerator} used by this store */
+    /**
+     * Closed the {@link IdGenerator} used by this store
+     */
     protected void closeIdGenerator()
     {
         if ( idGenerator != null )
@@ -532,7 +539,7 @@ public abstract class CommonAbstractStore implements IdSequence
      * Closes this store. This will cause all buffers and channels to be closed.
      * Requesting an operation from after this method has been invoked is
      * illegal and an exception will be thrown.
-     * <p>
+     * <p/>
      * This method will start by invoking the {@link #closeStorage} method
      * giving the implementing store way to do anything that it needs to do
      * before the fileChannel is closed.
@@ -579,7 +586,7 @@ public abstract class CommonAbstractStore implements IdSequence
                             UTF8.encode( getTypeAndVersionDescriptor() ) );
                     fileChannel.write( buffer );
                     stringLogger.debug( "Closing " + storageFileName + ", truncating at " + fileChannel.position() +
-                                        " vs file size " + fileChannel.size() );
+                            " vs file size " + fileChannel.size() );
                     fileChannel.truncate( fileChannel.position() );
                     fileChannel.force( false );
                     releaseFileLockAndCloseFileChannel();
@@ -589,10 +596,16 @@ public abstract class CommonAbstractStore implements IdSequence
                 catch ( IOException e )
                 {
                     storedIoe = e;
-                    if (i > 20){
-                    	System.out.println("Truncate retry:" +i);
-                    	try {Thread.sleep(50);}
-                    	catch (Exception ee){}
+                    if ( i > 20 )
+                    {
+                        System.out.println( "Truncate retry:" + i );
+                        try
+                        {
+                            Thread.sleep( 50 );
+                        }
+                        catch ( Exception ee )
+                        {
+                        }
                     }
                     System.gc();
                 }
@@ -606,7 +619,7 @@ public abstract class CommonAbstractStore implements IdSequence
         if ( !success )
         {
             throw new UnderlyingStorageException( "Unable to close store "
-                                                  + getStorageFileName(), storedIoe );
+                    + getStorageFileName(), storedIoe );
         }
     }
 
@@ -642,7 +655,9 @@ public abstract class CommonAbstractStore implements IdSequence
         return fileChannel;
     }
 
-    /** @return The highest possible id in use, -1 if no id in use. */
+    /**
+     * @return The highest possible id in use, -1 if no id in use.
+     */
     public long getHighestPossibleIdInUse()
     {
         if ( idGenerator != null )
@@ -656,7 +671,9 @@ public abstract class CommonAbstractStore implements IdSequence
         }
     }
 
-    /** @return The total number of ids in use. */
+    /**
+     * @return The total number of ids in use.
+     */
     public long getNumberOfIdsInUse()
     {
         return idGenerator.getNumberOfIdsInUse();
@@ -698,7 +715,7 @@ public abstract class CommonAbstractStore implements IdSequence
     public void logIdUsage( StringLogger.LineLogger lineLogger )
     {
         lineLogger.logLine( String.format( "  %s: used=%s high=%s",
-                                           getTypeDescriptor(), getNumberOfIdsInUse(), getHighestPossibleIdInUse() ) );
+                getTypeDescriptor(), getNumberOfIdsInUse(), getHighestPossibleIdInUse() ) );
     }
 
     @Override
