@@ -94,10 +94,8 @@ public class Importer
     public static void main( String... args ) throws IOException
     {
         startImport = System.currentTimeMillis();
-        System.err.println( "New Importer - parallel and scalable" );
-        System.err.println( "Usage: NewImporter data/dir nodes.csv relationships.csv [node_index node-index-name " +
-                "fulltext|exact nodes_index.csv rel_index rel-index-name fulltext|exact rels_index.csv ....]" );
-        System.err.println( "Using: NewImporter " + join( args, " " ) );
+        System.err.println( "Neo4j Data Importer" );
+        System.err.println( Config.usage() );
         System.err.println();
 
         final Config config = Config.convertArgumentsToConfig( args );

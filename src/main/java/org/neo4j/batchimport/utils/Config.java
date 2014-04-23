@@ -8,21 +8,26 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Stack;
 
+import org.neo4j.batchimport.Importer;
 import org.neo4j.batchimport.IndexInfo;
+import org.neo4j.helpers.Args;
 import org.neo4j.helpers.collection.MapUtil;
+
+import static java.lang.String.format;
 
 public class Config
 {
-    public static final String BATCH_IMPORT_RELS_FILES = "batch_import.rels_files";
-    public static final String BATCH_IMPORT_GRAPH_DB = "batch_import.graph_db";
-    public static final String BATCH_IMPORT_KEEP_DB = "batch_import.keep_db";
+    public static final String BATCH_IMPORT_RELS_FILES = "rels";
+    public static final String BATCH_IMPORT_GRAPH_DB = "db-directory";
+    public static final String BATCH_IMPORT_KEEP_DB = "keep-db";
+    public static final String BATCH_IMPORT_CONFIG_FILE = "config";
     public static final String CONFIG_FILE_NAME = "batch.properties";
-    public static final String BATCH_IMPORT_NODES_FILES = "batch_import.nodes_files";
+    public static final String BATCH_IMPORT_NODES_FILES = "nodes";
     public static final String BATCH_IMPORT_MAPDB_CACHE_DISABLE = "batch_import.mapdb_cache.disable";
     public static final String BATCH_IMPORT_CSV_QUOTES = "batch_import.csv.quotes";
     public static final String BATCH_IMPORT_CSV_DELIM = "batch_import.csv.delim";
     public static final String ARRAY_SEPARATOR_CONFIG = "batch_array_separator";
-    public static final String BATCH_IMPORT_DEBUG_MODE = "batch_import_debug";
+    public static final String BATCH_IMPORT_DEBUG_MODE = "debug";
     public static String ARRAYS_SEPARATOR = ",";
 
     private final Map<String, String> configData;
@@ -38,16 +43,29 @@ public class Config
 
     public static Config convertArgumentsToConfig( String[] args )
     {
-        final Stack<String> argumentList = toStack( args );
+        Args arguments = new Args( args );
 
-        String configFileName = findConfigFileName( argumentList );
+        String configFileName = arguments.get( BATCH_IMPORT_CONFIG_FILE, CONFIG_FILE_NAME );
+        Map<String, String> config = config( configFileName );
 
-        final Map<String, String> config = config( configFileName );
+        addConfigFromArgument( arguments, BATCH_IMPORT_GRAPH_DB, "graph.db", config );
+        addConfigFromArgument( arguments, BATCH_IMPORT_NODES_FILES, null, config );
+        addConfigFromArgument( arguments, BATCH_IMPORT_RELS_FILES, null, config );
+        addConfigFromArgument( arguments, BATCH_IMPORT_DEBUG_MODE, "debug", config );
 
-        convertParamsToConfig( argumentList, config );
+        // TODO legacy indexes
 
         validateConfig( config );
         return new Config( config );
+    }
+
+    private static void addConfigFromArgument( Args arguments, String key, String defaultValue, Map<String,String> targetConfig )
+    {
+        String value = arguments.get( key, defaultValue );
+        if ( value != null )
+        {
+            targetConfig.put( key, value );
+        }
     }
 
     private static Stack<String> toStack( String[] args )
@@ -60,18 +78,6 @@ public class Config
         return argumentList;
     }
 
-    private static String findConfigFileName( Stack<String> argumentList )
-    {
-        String firstParam = argumentList.isEmpty() ? "" : argumentList.peek();
-        String configFileName = CONFIG_FILE_NAME;
-        if ( firstParam.endsWith( ".properties" ) )
-        {
-            configFileName = firstParam;
-            popOrNull( argumentList );
-        }
-        return configFileName;
-    }
-
     // todo more checks ?
     private static void validateConfig( Map<String, String> config )
     {
@@ -81,51 +87,15 @@ public class Config
         }
     }
 
-    private static Collection<IndexInfo> convertParamsToConfig( Stack<String> args, Map<String, String> config )
-    {
-        addConfigParamIfArgument( args, config, BATCH_IMPORT_GRAPH_DB );
-        addConfigParamIfArgument( args, config, BATCH_IMPORT_NODES_FILES );
-        addConfigParamIfArgument( args, config, BATCH_IMPORT_RELS_FILES );
-//        addConfigParamIfArgument(args, config, BATCH_IMPORT_DEBUG_MODE);
-        Collection<IndexInfo> indexes = createIndexInfos( args );
-        for ( IndexInfo index : indexes )
-        {
-            index.addToConfig( config );
-        }
-        return indexes;
-    }
-
-    private static void addConfigParamIfArgument( Stack<String> args, Map<String, String> config, String param )
-    {
-        final String arg = popOrNull( args );
-        if ( arg == null || arg.trim().isEmpty() )
-        {
-            return;
-        }
-        if ( !config.containsKey( param ) )
-        {
-            config.put( param, arg );
-        }
-    }
-
-    private static String popOrNull( Stack<String> args )
-    {
-        if ( args.isEmpty() )
-        {
-            return null;
-        }
-        return args.pop();
-    }
-
-    private static Collection<IndexInfo> createIndexInfos( Stack<String> args )
-    {
-        Collection<IndexInfo> indexes = new ArrayList<IndexInfo>();
-        while ( !args.isEmpty() )
-        {
-            indexes.add( new IndexInfo( popOrNull( args ), popOrNull( args ), popOrNull( args ), popOrNull( args ) ) );
-        }
-        return indexes;
-    }
+//    private static Collection<IndexInfo> createIndexInfos( Stack<String> args )
+//    {
+//        Collection<IndexInfo> indexes = new ArrayList<IndexInfo>();
+//        while ( !args.isEmpty() )
+//        {
+//            indexes.add( new IndexInfo( popOrNull( args ), popOrNull( args ), popOrNull( args ), popOrNull( args ) ) );
+//        }
+//        return indexes;
+//    }
 
     public static Map<String, String> config( String fileName )
     {
@@ -270,5 +240,17 @@ public class Config
     public Map<String, String> getConfigData()
     {
         return configData;
+    }
+
+    public static String usage()
+    {
+        StringBuilder usage = new StringBuilder();
+        usage.append( Importer.class.getSimpleName() );
+        usage.append( format( " -%s <%s>", BATCH_IMPORT_GRAPH_DB, "graph.db" ) );
+        usage.append( format( " -%s <%s>", BATCH_IMPORT_NODES_FILES, "nodes.csv" ) );
+        usage.append( format( " -%s <%s>", BATCH_IMPORT_RELS_FILES, "rels.csv" ) );
+        usage.append( format( " -%s <%s>", BATCH_IMPORT_DEBUG_MODE, "debug config" ) );
+        // TODO legacy index
+        return usage.toString();
     }
 }

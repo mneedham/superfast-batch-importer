@@ -29,7 +29,7 @@ public class NewImporterIntegrationTest
         FileUtils.deleteRecursively( new File( DB_DIRECTORY ) );
         NewTestDataGenerator.main( "dir=" + System.getProperty( "user.dir" ), "nodes=10000", "relsPerNode=10",
                 "relTypes=4", "sorted" );
-        Importer.main( DB_DIRECTORY, "nodes.csv", "rels.csv" );
+        Importer.main( "-db-directory", DB_DIRECTORY, "-nodes", "nodes.csv", "-rels", "rels.csv" );
         ConsistencyCheckTool.main( new String[]{DB_DIRECTORY} );
     }
 
@@ -42,7 +42,7 @@ public class NewImporterIntegrationTest
                 "\n00000DABDE4C555FC82F7D534835247B94873C2C\r\n00001BE4128DB41729365A41D3AC1D019E5ED8A6\r\n";
         writer.write( testData );
         writer.close();
-        Importer.main( DB_DIRECTORY, "target/hashes.csv" );
+        Importer.main( "-db-directory", DB_DIRECTORY, "-nodes", "target/hashes.csv" );
         ConsistencyCheckTool.main( new String[]{DB_DIRECTORY} );
         GraphDatabaseService db = new GraphDatabaseFactory().newEmbeddedDatabase( DB_DIRECTORY );
         try ( Transaction tx = db.beginTx() )
