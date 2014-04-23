@@ -35,8 +35,6 @@ public class Stages
 
     public Stages( StageMethods stageMethods )
     {
-        threadCount = Runtime.getRuntime().availableProcessors();
-        importWorkers = new ImportWorker[threadCount];
         this.stageMethods = stageMethods;
     }
 
@@ -54,6 +52,8 @@ public class Stages
     {
         currentMode = mode;
         this.numStages = methods.length;
+        threadCount = Math.max( Runtime.getRuntime().availableProcessors(), numStages );
+        importWorkers = new ImportWorker[threadCount];
         stageRunData = new RunData[numStages][threadCount];
         for ( int i = 0; i < numStages; i++ )
         {
