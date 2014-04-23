@@ -63,7 +63,7 @@ public class Stages
             }
         }
         stageComplete = new boolean[numStages];
-        bufferQ = new DataBufferBlockingQ<CSVDataBuffer>( numStages, Constants.BUFFERQ_SIZE, threadCount );
+        bufferQ = new DataBufferBlockingQ<>( numStages, Constants.BUFFERQ_SIZE, threadCount );
         initInputQ( bufferQ.getQ( 0 ), bufArray );
         importStageMethods = new Method[methods.length];
         for ( int i = 0; i < methods.length; i++ )

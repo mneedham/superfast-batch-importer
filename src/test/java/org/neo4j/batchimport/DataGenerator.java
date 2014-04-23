@@ -14,7 +14,7 @@ import org.junit.Ignore;
  * @since 13.01.12
  */
 @Ignore
-public class NewTestDataGenerator
+public class DataGenerator
 {
     static int MAX_SHORT_STRING = -1;
     static int MAX_SHORT_STRING_SELECT = 0;

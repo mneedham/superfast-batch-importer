@@ -32,7 +32,6 @@ import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndexProvider;
 
-import static org.neo4j.batchimport.Utils.join;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.EXACT_CONFIG;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.FULLTEXT_CONFIG;
 
@@ -276,10 +275,7 @@ public class Importer
 
     public void importNodes( Reader reader ) throws BatchImportException
     {
-        if ( importStages == null )
-        {
-            importStages = setupStages();
-        }
+        importStages = setupStages();
         if ( importStages.getState() != ImportStageState.NodeImport )
         {
             setupStagesForNodes();
@@ -289,10 +285,7 @@ public class Importer
 
     public void importRelationships( Reader reader ) throws BatchImportException
     {
-        if ( importStages == null )
-        {
-            importStages = setupStages();
-        }
+        importStages = setupStages();
         if ( importStages.getState() != ImportStageState.RelationshipImport )
         {
             setupStagesForRelationships();

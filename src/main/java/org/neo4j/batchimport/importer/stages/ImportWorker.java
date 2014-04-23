@@ -125,6 +125,7 @@ public class ImportWorker extends java.lang.Thread
                     catch ( Exception e )
                     {
                         this.excep = e;
+                        e.printStackTrace();
                         Utils.SystemOutPrintln( "Invoke stage method failed:" + name + ":" + e.getMessage() + ":" +
                                 this.stages.getBufferQ().getThreadCount( stageIndex ) );
                     }
