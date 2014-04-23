@@ -261,7 +261,7 @@ public class Importer
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Writer setup failed]" + e.getMessage() );
+            throw new BatchImportException( "[Writer setup failed]", e );
         }
         return writerStage;
     }
@@ -328,7 +328,7 @@ public class Importer
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Nodes setup failed]" + e.getMessage() );
+            throw new BatchImportException( "[Nodes setup failed]", e );
         }
     }
 
@@ -352,7 +352,7 @@ public class Importer
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Relationship setup failed]" + e.getMessage() );
+            throw new BatchImportException( "[Relationship setup failed]", e );
         }
     }
 

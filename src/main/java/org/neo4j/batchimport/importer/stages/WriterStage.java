@@ -63,14 +63,6 @@ public class WriterStage
         }
     }
 
-    public void stop()
-    {
-        for ( int i = 0; i < numWriters; i++ )
-        {
-            writerWorker[i].stop();
-        }
-    }
-
     public DiskRecordsCache getDiskRecordsCache()
     {
         return diskRecCache;

@@ -72,7 +72,7 @@ public class StageMethods
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[ImportNode Stage1 failed]" + e.getMessage() );
+                throw new BatchImportException( "[ImportNode Stage1 failed]", e );
             }
         }
 
@@ -84,7 +84,7 @@ public class StageMethods
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[ImportNode Stage2 failed]" + e.getMessage() );
+                throw new BatchImportException( "[ImportNode Stage2 failed]", e );
             }
         }
 
@@ -97,7 +97,7 @@ public class StageMethods
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[ImportNode Stage2 failed]" + e.getMessage() );
+                throw new BatchImportException( "[ImportNode Stage2 failed]", e );
             }
         }
 

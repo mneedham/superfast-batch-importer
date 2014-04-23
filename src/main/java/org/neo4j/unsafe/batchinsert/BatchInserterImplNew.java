@@ -146,7 +146,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[createNodeRecords failed]" + e.getMessage() );
+            throw new BatchImportException( "[createNodeRecords failed]", e );
         }
     }
 
@@ -171,7 +171,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[importNode_writeNodeStore failed]" + e.getMessage() );
+            throw new BatchImportException( "[importNode_writeNodeStore failed]", e );
         }
     }
 
@@ -205,8 +205,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[importRelationships_createRelationshipRecords failed]" + e
-                        .getMessage() );
+                throw new BatchImportException( "[importRelationships_createRelationshipRecords failed]" + e.getMessage() );
             }
         }
     }
@@ -252,7 +251,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[importRelationships_prepareRecords failed]" + e.getMessage() );
+                throw new BatchImportException( "[importRelationships_prepareRecords failed]", e );
             }
         }
     }
@@ -285,8 +284,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Adding to Property/Node/Relation Q failed][" + buf.getBufSequenceId() +
-                    "]" + e.getMessage() );
+            throw new BatchImportException( "[Adding to Property/Node/Relation Q failed][" + buf.getBufSequenceId()  +"]", e );
         }
     }
 
@@ -334,7 +332,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[importEncodeProps failed]" + e.getMessage() );
+                throw new BatchImportException( "[importEncodeProps failed]", e );
             }
         }
     }
@@ -404,7 +402,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[WriteProperty failed]" + e.getMessage() );
+                throw new BatchImportException( "[WriteProperty failed]", e );
             }
         }
     }
@@ -425,7 +423,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[WriteRelationship failed]" + e.getMessage() );
+                throw new BatchImportException( "[WriteRelationship failed]", e );
             }
         }
     }
@@ -444,7 +442,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[WriteNodes failed]" + e.getMessage() );
+                throw new BatchImportException( "[WriteNodes failed]", e );
             }
         }
     }
@@ -468,7 +466,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 if ( errorCount++ > Constants.errorThreshold )
                 {
                     throw new BatchImportException( "[writeNodeNextRel failed]{Errors exceeded error threshold -" +
-                            errorCount + "]" );
+                            errorCount + "]", e );
                 }
             }
         }
