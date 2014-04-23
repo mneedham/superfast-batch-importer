@@ -73,7 +73,7 @@ public class Config {
         addConfigParamIfArgument(args, config, BATCH_IMPORT_GRAPH_DB);
         addConfigParamIfArgument(args, config, BATCH_IMPORT_NODES_FILES);
         addConfigParamIfArgument(args, config, BATCH_IMPORT_RELS_FILES);
-        addConfigParamIfArgument(args, config, BATCH_IMPORT_DEBUG_MODE);;
+//        addConfigParamIfArgument(args, config, BATCH_IMPORT_DEBUG_MODE);
         Collection<IndexInfo> indexes = createIndexInfos(args);
         for (IndexInfo index : indexes) {
             index.addToConfig(config);
