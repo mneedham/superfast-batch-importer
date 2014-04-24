@@ -210,6 +210,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
                         typeId );
                 record.setInUse( true );
                 record.setCreated();
+                record.setFirstInFirstChain( false );
+                record.setFirstInSecondChain( false );
                 buf.getDiskRecords( Constants.RELATIONSHIP ).addRecord( record, index );
             }
             catch ( Exception e )
@@ -304,7 +306,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
 
     private boolean nodeIsDense( long nodeId )
     {
-        return nodeCache.getCount( nodeId ) >= 15;
+//        return nodeCache.getCount( nodeId ) >= 15;
+        return false;
     }
 
     public void importRelationships_writeStore( CSVDataBuffer buf ) throws BatchImportException

@@ -41,7 +41,7 @@ public class NodesCache
     public void put( long key, long value )
     {
         long count = nodeCache[getCacheIndex( key )][getIndex( key )] & LEFTOVER_BIT_MASK;
-        nodeCache[getCacheIndex( key )][getIndex( key )] = count & value;
+        nodeCache[getCacheIndex( key )][getIndex( key )] = count | value;
     }
 
     public long get( long key )
