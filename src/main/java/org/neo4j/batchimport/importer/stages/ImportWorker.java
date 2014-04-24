@@ -1,18 +1,15 @@
 package org.neo4j.batchimport.importer.stages;
 
-import java.lang.reflect.Method;
-
-import org.neo4j.batchimport.importer.structs.AbstractDataBuffer;
 import org.neo4j.batchimport.importer.structs.CSVDataBuffer;
 import org.neo4j.batchimport.importer.utils.Utils;
 
 public class ImportWorker extends java.lang.Thread
 {
-    public static ThreadLocal<ImportWorker> threadImportWorker = new ThreadLocal<ImportWorker>();
+    public static ThreadLocal<ImportWorker> threadImportWorker = new ThreadLocal<>();
     private Exception excep;
     private String name = "";
     private boolean isRunning = false;
-    private Method[] importWorkerMethods;
+    private Stage[] importWorkerMethods;
     private ReadFileData input;
     private int stageIndex = -1;
     private final int threadIndex;
@@ -37,7 +34,7 @@ public class ImportWorker extends java.lang.Thread
         input = inp;
     }
 
-    public void setImportWorkers( Method[] importWorkerMethods )
+    public void setImportWorkers( Stage[] importWorkerMethods )
     {
         this.importWorkerMethods = importWorkerMethods;
     }
@@ -82,7 +79,7 @@ public class ImportWorker extends java.lang.Thread
         stages.upThreadCount();
         isRunning = true;
         Thread.currentThread().setName( name );
-        AbstractDataBuffer buffer = null;
+        CSVDataBuffer buffer = null;
 
         while ( !isDone() )
         {
@@ -90,7 +87,7 @@ public class ImportWorker extends java.lang.Thread
             {
                 try
                 {
-                    buffer = (AbstractDataBuffer) stages.getBufferQ().getBuffer( this.stageIndex, this );
+                    buffer = stages.getBufferQ().getBuffer( this.stageIndex, this );
                 }
                 catch ( Exception e )
                 {
@@ -111,16 +108,14 @@ public class ImportWorker extends java.lang.Thread
                 {
                     this.setPriority( Thread.NORM_PRIORITY );
                 }
-                String methodName = importWorkerMethods[buffer.getStageIndex()].getName();
+                String methodName = importWorkerMethods[buffer.getStageIndex()].name();
                 this.name = Thread.currentThread().getName() + "ImportNode_" + methodName;
                 if ( buffer != null )
                 {
-                    Object[] parameters = new Object[2];
-                    parameters[0] = this.input;
-                    parameters[1] = buffer;
                     try
                     {
-                        importWorkerMethods[buffer.getStageIndex()].invoke( stages.getMethods(), parameters );
+                        importWorkerMethods[buffer.getStageIndex()].execute( stages.getStageContext(), this.input,
+                                buffer );
                     }
                     catch ( Exception e )
                     {
@@ -146,7 +141,7 @@ public class ImportWorker extends java.lang.Thread
                             }
                         }
                     }
-                    buffer = stages.getBufferQ().putBuffer( (CSVDataBuffer) buffer );
+                    buffer = stages.getBufferQ().putBuffer( buffer );
                     this.setCurrentMethod();
                 }
             }
@@ -167,11 +162,6 @@ public class ImportWorker extends java.lang.Thread
         return this.excep;
     }
 
-    private boolean isRunning()
-    {
-        return isRunning;
-    }
-
     public boolean isDone()
     {
         if ( !stages.isComplete() )
@@ -185,13 +175,9 @@ public class ImportWorker extends java.lang.Thread
         }
         catch ( Exception e )
         {
+            e.printStackTrace();
         }
-        ;
-        if ( stages.moreWork() )
-        {
-            return false;
-        }
-        return true;
+        return !stages.moreWork();
     }
 
 }

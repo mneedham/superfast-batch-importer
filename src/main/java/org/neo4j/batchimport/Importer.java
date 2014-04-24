@@ -12,10 +12,13 @@ import java.util.Map;
 
 import org.neo4j.batchimport.importer.ChunkerLineData;
 import org.neo4j.batchimport.importer.CsvLineData;
+import org.neo4j.batchimport.importer.stages.ImportNodeStage;
+import org.neo4j.batchimport.importer.stages.ImportRelationshipStage;
 import org.neo4j.batchimport.importer.stages.ReadFileData;
-import org.neo4j.batchimport.importer.stages.StageMethods;
+import org.neo4j.batchimport.importer.stages.StageContext;
 import org.neo4j.batchimport.importer.stages.Stages;
 import org.neo4j.batchimport.importer.stages.WriterStage;
+import org.neo4j.batchimport.importer.stages.WriterStages;
 import org.neo4j.batchimport.importer.structs.CSVDataBuffer;
 import org.neo4j.batchimport.importer.structs.Constants;
 import org.neo4j.batchimport.importer.structs.Constants.ImportStageState;
@@ -43,14 +46,13 @@ public class Importer
     private static Report report;
     private final Config config;
     private BatchInserterIndexProvider indexProvider;
-    Map<String, BatchInserterIndex> indexes = new HashMap<String, BatchInserterIndex>();
+    Map<String, BatchInserterIndex> indexes = new HashMap<>();
     public static long startImport = 0;
 
     private BatchInserterImplNew db;
     private Stages importStages = null;
     private NodesCache nodeCache = null;
     private boolean relationLinkbackNeeded = false;
-    private ImportStageState importStageState = ImportStageState.Uninitialized;
 
     public Importer( File graphDb, final Config config )
     {
@@ -243,33 +245,29 @@ public class Importer
         }
     }
 
-    private WriterStage setWriterStage( Stages importStages ) throws BatchImportException
+    private WriterStages setWriterStage( Stages importStages ) throws BatchImportException
     {
-        WriterStage writerStage = new WriterStage( importStages );
+        WriterStages writerStages = new WriterStages( importStages, db );
         Class[] parameterTypes = new Class[1];
         parameterTypes[0] = DiskRecordsBuffer.class;
         try
         {
-            writerStage.init( StageMethods.WriterStage.class.getMethod( "writeProperty", parameterTypes ),
-                    //StageMethods.WriterStage.class.getMethod("writeProperty", parameterTypes),
-                    StageMethods.WriterStage.class.getMethod( "writeNode", parameterTypes ),
-                    StageMethods.WriterStage.class.getMethod( "writeRelationship", parameterTypes )
-            );
+            writerStages.init( WriterStage.values() );
         }
         catch ( Exception e )
         {
             throw new BatchImportException( "[Writer setup failed]", e );
         }
-        return writerStage;
+        return writerStages;
     }
 
     private Stages setupStages() throws BatchImportException
     {
-        Stages importStages = new Stages( new StageMethods( db, db, indexes ) );
-        WriterStage writerStage = setWriterStage( importStages );
-        db.setDiskBlockingQ( writerStage.getDiskBlockingQ() );
-        importStages.setDataBuffers( writerStage.getDiskRecordsCache() );
-        writerStage.start();
+        Stages importStages = new Stages( new StageContext( db, db, indexes ) );
+        WriterStages writerStages = setWriterStage( importStages );
+        db.setDiskBlockingQ( writerStages.getDiskBlockingQ() );
+        importStages.setDataBuffers( writerStages.getDiskRecordsCache() );
+        writerStages.start();
         return importStages;
     }
 
@@ -306,16 +304,8 @@ public class Importer
     {
         try
         {
-            Class[] parameterTypes = new Class[2];
-            parameterTypes[0] = ReadFileData.class;
-            parameterTypes[1] = CSVDataBuffer.class;
-            importStages.init( Constants.NODE, StageMethods.ImportNode.class.getMethod( "stage0", parameterTypes ),
-                    StageMethods.ImportNode.class.getMethod( "stage1", parameterTypes ),
-                    StageMethods.ImportNode.class.getMethod( "stage2", parameterTypes ),
-                    StageMethods.ImportNode.class.getMethod( "stage3", parameterTypes ),
-                    StageMethods.ImportNode.class.getMethod( "stage4", parameterTypes ) );
+            importStages.init( Constants.NODE, ImportNodeStage.values() );
             importStages.setSingleThreaded( false, true, false, false, false );
-            importStageState = ImportStageState.NodeImport;
         }
         catch ( Exception e )
         {
@@ -330,15 +320,7 @@ public class Importer
         relationLinkbackNeeded = true;
         try
         {
-            Class[] parameterTypes = new Class[2];
-            parameterTypes[0] = ReadFileData.class;
-            parameterTypes[1] = CSVDataBuffer.class;
-            importStages.init( Constants.RELATIONSHIP, StageMethods.ImportRelationship.class.getMethod( "stage0",
-                    parameterTypes ),
-                    StageMethods.ImportRelationship.class.getMethod( "stage1", parameterTypes ),
-                    StageMethods.ImportRelationship.class.getMethod( "stage2", parameterTypes ),
-                    StageMethods.ImportRelationship.class.getMethod( "stage3", parameterTypes ),
-                    StageMethods.ImportRelationship.class.getMethod( "stage4", parameterTypes ) );
+            importStages.init( Constants.RELATIONSHIP, ImportRelationshipStage.values() );
             importStages.setSingleThreaded( false, true, false, true, false );
         }
         catch ( Exception e )

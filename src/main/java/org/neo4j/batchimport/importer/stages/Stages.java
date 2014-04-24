@@ -1,6 +1,5 @@
 package org.neo4j.batchimport.importer.stages;
 
-import java.lang.reflect.Method;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 
@@ -13,6 +12,8 @@ import org.neo4j.batchimport.importer.structs.RunData;
 import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.unsafe.batchinsert.BatchInserterImpl;
 
+import static java.lang.String.format;
+
 public class Stages
 {
     private ImportStageState stageState = ImportStageState.Uninitialized;
@@ -23,19 +24,19 @@ public class Stages
     private boolean[] stageComplete;
     private int numStages;
     private ImportWorker[] importWorkers;
-    private Method[] importStageMethods;
+    private Stage[] importStageMethods;
     private CSVDataBuffer[] bufArray;
     private boolean moreWork = true;
     private ReadFileData currentInput = null;
     private long startImport = System.currentTimeMillis();
     protected CountDownLatch startStagesSyncPoint = new CountDownLatch( 1 );
-    private StageMethods stageMethods;
+    private StageContext stageContext;
     private int currentMode = -1;
-    private WriterStage writerStage;
+    private WriterStages writerStages;
 
-    public Stages( StageMethods stageMethods )
+    public Stages( StageContext stageContext )
     {
-        this.stageMethods = stageMethods;
+        this.stageContext = stageContext;
     }
 
     public ImportStageState getState()
@@ -43,12 +44,7 @@ public class Stages
         return stageState;
     }
 
-    public int getMode()
-    {
-        return currentMode;
-    }
-
-    public void init( int mode, Method... methods )
+    public void init( int mode, Stage... methods )
     {
         currentMode = mode;
         this.numStages = methods.length;
@@ -65,7 +61,7 @@ public class Stages
         stageComplete = new boolean[numStages];
         bufferQ = new DataBufferBlockingQ<>( numStages, Constants.BUFFERQ_SIZE, threadCount );
         initInputQ( bufferQ.getQ( 0 ), bufArray );
-        importStageMethods = new Method[methods.length];
+        importStageMethods = new Stage[methods.length];
         for ( int i = 0; i < methods.length; i++ )
         {
             importStageMethods[i] = methods[i];
@@ -98,9 +94,9 @@ public class Stages
         return moreWork;
     }
 
-    public void registerWriterStage( WriterStage writerStage )
+    public void registerWriterStage( WriterStages writerStages )
     {
-        this.writerStage = writerStage;
+        this.writerStages = writerStages;
     }
 
     public void start( ReadFileData input )
@@ -141,8 +137,8 @@ public class Stages
                 }
                 catch ( Exception e )
                 {
+                    e.printStackTrace();
                 }
-                ;
             }
             else
             {
@@ -194,11 +190,6 @@ public class Stages
         return (--activeThreadCount);
     }
 
-    public int getThreadCount()
-    {
-        return threadCount;
-    }
-
     public RunData getStageRunData( int index1, int index2 )
     {
         return stageRunData[index1][index2];
@@ -209,32 +200,9 @@ public class Stages
         stageComplete[stageIndex] = value;
     }
 
-    public boolean isStageComplete( int stageIndex )
+    public StageContext getStageContext()
     {
-        return stageComplete[stageIndex];
-    }
-
-    public int numStages()
-    {
-        return numStages;
-    }
-
-    public StageMethods getStageMethods()
-    {
-        return stageMethods;
-    }
-
-    public Object getMethods()
-    {
-        if ( currentMode == Constants.NODE )
-        {
-            return stageMethods.importNode;
-        }
-        if ( currentMode == Constants.RELATIONSHIP )
-        {
-            return stageMethods.importRelationship;
-        }
-        return null;
+        return stageContext;
     }
 
     private void setDataInput( ReadFileData input, CSVDataBuffer[] bufferArray )
@@ -254,7 +222,6 @@ public class Stages
                     Constants.BUFFER_SIZE_BYTES, i, diskCache );
             bufferArray[i] = buf;
         }
-        ;
         return bufferArray;
     }
 
@@ -361,7 +328,6 @@ public class Stages
         {
             long linesProcessed = 0;
             long snapRate = 1, rate = 1;
-            ;
             if ( stageComplete[j] )
             {
                 continue;
@@ -377,7 +343,7 @@ public class Stages
             {
                 type = "S";
             }
-            str.append( "[" + type + ":" + linesProcessed + ":" + rate + ":" + snapRate + "]" );
+            str.append( format( "[%s:%d:%d:%d]", type, linesProcessed, rate, snapRate ) );
             if ( detailed )
             {
                 for ( int i = 0; i < stageRunData[j].length && stageRunData[j][i] != null; i++ )
@@ -386,15 +352,14 @@ public class Stages
                 }
             }
         }
-        ;
         System.out.println( "\t" + str );
         str.setLength( 0 );
         str.append( "Writers:" );
-        for ( int i = 0; i < writerStage.numWriters; i++ )
+        for ( int i = 0; i < writerStages.numWriters; i++ )
         {
-            str.append( "[" + Constants.RECORD_TYPE_NAME[writerStage.writerWorker[i].workerType] + ":" +
-                    writerStage.diskBlockingQ.getLength( writerStage.writerWorker[i].workerType ) + ":" +
-                    writerStage.getRunData( i ).linesProcessed + "]" );
+            str.append( format( "[%s:%d:%d]",                    Constants.RECORD_TYPE_NAME[writerStages.writerWorker[i].workerType],
+                    writerStages.diskBlockingQ.getLength( writerStages.writerWorker[i].workerType ),
+                    writerStages.getRunData( i ).linesProcessed ) );
         }
         System.out.println( "\t" + str );
         str.setLength( 0 );

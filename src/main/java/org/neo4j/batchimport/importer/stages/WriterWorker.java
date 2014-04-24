@@ -9,15 +9,15 @@ public class WriterWorker extends java.lang.Thread
     protected int workerType;
     protected String threadName;
     protected Stages stages;
-    protected WriterStage writerStage;
+    protected WriterStages writerStages;
     protected int writerIndex;
 
-    WriterWorker( int writerIndex, int type, Stages stages, WriterStage writerStage )
+    WriterWorker( int writerIndex, int type, Stages stages, WriterStages writerStages )
     {
         this.writerIndex = writerIndex;
         this.workerType = type;
         this.stages = stages;
-        this.writerStage = writerStage;
+        this.writerStages = writerStages;
     }
 
     public void run()
@@ -29,25 +29,22 @@ public class WriterWorker extends java.lang.Thread
         {
             try
             {
-                DiskRecordsBuffer buf = writerStage.getDiskBlockingQ().getBuffer( workerType );//diskRecordsQ
-                // .getBuffer(workerType);
+                DiskRecordsBuffer buf = writerStages.getDiskBlockingQ().getBuffer( workerType );
                 if ( buf == null )
                 {
                     continue;
                 }
-                Object[] parameters = new Object[1];
-                parameters[0] = buf;
                 try
                 {
-                    writerStage.writerMethods[writerIndex].invoke( stages.getStageMethods().writerStage, parameters );
+                    writerStages.writerMethods[writerIndex].execute( writerStages.db, buf );
                 }
                 catch ( Exception e )
                 {
                     Utils.SystemOutPrintln( "Writer Method Failed :" + e.getMessage() );
                 }
-                writerStage.getRunData( writerIndex ).linesProcessed += buf.getRecordCount();
+                writerStages.getRunData( writerIndex ).linesProcessed += buf.getRecordCount();
                 buf.cleanup();
-                writerStage.getDiskRecordsCache().putDiskRecords( buf, workerType );//diskRecCache.putDiskRecords(buf, workerType);
+                writerStages.getDiskRecordsCache().putDiskRecords( buf, workerType );//diskRecCache.putDiskRecords(buf, workerType);
             }
             catch ( Exception e )
             {
@@ -55,15 +52,10 @@ public class WriterWorker extends java.lang.Thread
                 break;
             }
         }
-        //System.out.println("Exiting writer "+ threadName);
     }
 
     public boolean isDone()
     {
-        if ( stages.moreWork() )
-        {
-            return false;
-        }
-        return true;
+        return !stages.moreWork();
     }
 }
