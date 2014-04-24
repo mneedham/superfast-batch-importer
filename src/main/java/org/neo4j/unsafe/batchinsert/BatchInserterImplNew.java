@@ -511,7 +511,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 relRecord = neoStore.getRelationshipStore().getRecord( id );
                 if ( !relRecord.inUse() )
                 {
-                    throw new BatchImportException( "Relationship [" + relRecord.getId() + " [" + relRecord.toString() + "] not in use", null );
+                    System.out.println( "Relationship [" + relRecord.getId() + " [" + relRecord.toString() + "] not in use" );
                 }
                 relId = relRecord.getId();
                 firstNode = relRecord.getFirstNode();
