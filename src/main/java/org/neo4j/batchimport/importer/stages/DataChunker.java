@@ -104,12 +104,12 @@ public class DataChunker
 
     public boolean fillBuffer( CSVDataBuffer buf ) throws IOException
     {
-        ImportWorker.threadImportWorker.get().setCurrentMethod();
+        ImportWorker.debugSetCurrentMethod();
         if ( fillRawData( buf ) < 0 )
         {
             return false;
         }
-        ImportWorker.threadImportWorker.get().setCurrentMethod( " " + buf.getBufSequenceId() );
+        ImportWorker.debugSetCurrentMethod( " " + buf.getBufSequenceId() );
         //parse
         try
         {

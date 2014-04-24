@@ -15,11 +15,12 @@ public abstract class AbstractDataBuffer
     private boolean moreData = true;
     protected int bufSequenceId = -1;
     protected long[] id = null;
-    private DiskRecordsBuffer[] diskRecords = new DiskRecordsBuffer[4];
+    private DiskRecordsBuffer[] diskRecords;
     private DiskRecordsCache diskRecordsCache;
 
-    public AbstractDataBuffer( int maxEntries, int bufSize, int index, DiskRecordsCache diskCache )
+    public AbstractDataBuffer( int maxEntries, int bufSize, DiskRecordsCache diskCache, int numberOfDiskRecordBuffers )
     {
+        this.diskRecords = new DiskRecordsBuffer[numberOfDiskRecordBuffers];
         this.maxEntries = maxEntries;
         id = new long[this.maxEntries];
         rawStrBuf = new StringBuilder();

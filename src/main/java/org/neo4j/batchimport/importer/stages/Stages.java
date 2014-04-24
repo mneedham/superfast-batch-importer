@@ -219,7 +219,7 @@ public class Stages
         for ( int i = 0; i < size; i++ )
         {
             CSVDataBuffer buf = new CSVDataBuffer( Constants.BUFFER_ENTRIES,
-                    Constants.BUFFER_SIZE_BYTES, i, diskCache );
+                    Constants.BUFFER_SIZE_BYTES, diskCache, 4 );
             bufferArray[i] = buf;
         }
         return bufferArray;

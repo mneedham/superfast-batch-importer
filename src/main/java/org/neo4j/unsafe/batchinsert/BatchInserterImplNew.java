@@ -12,7 +12,9 @@ import org.neo4j.batchimport.importer.structs.Constants;
 import org.neo4j.batchimport.importer.structs.DiskBlockingQ;
 import org.neo4j.batchimport.importer.structs.DiskRecordsBuffer;
 import org.neo4j.batchimport.importer.structs.NodesCache;
+import org.neo4j.batchimport.importer.structs.RelationshipGroupCache;
 import org.neo4j.batchimport.importer.utils.Utils;
+import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.Label;
 import org.neo4j.helpers.Service;
@@ -39,6 +41,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
     private ReadFileData dataInput = null;
     private DiskBlockingQ diskBlockingQ;
     private NodesCache nodeCache = null;
+    private RelationshipGroupCache relationshipGroupCache = null;
     private NeoStore neoStore = null;
 
     public BatchInserterImplNew( String storeDir,
@@ -49,9 +52,10 @@ public class BatchInserterImplNew extends BatchInserterImpl
         neoStore = this.getNeoStore();
     }
 
-    public void setNodesCache( NodesCache nodesCache )
+    public void setCaches( NodesCache nodesCache, RelationshipGroupCache relationshipGroupCache )
     {
         this.nodeCache = nodesCache;
+        this.relationshipGroupCache = relationshipGroupCache;
     }
 
     private NodeStore getNodeStore()
@@ -234,16 +238,14 @@ public class BatchInserterImplNew extends BatchInserterImpl
 
                 if ( firstNodeId == secondNodeId )
                 {
-                    firstNextRel = secondNextRel = nodeCache.get( firstNodeId );
-                    nodeCache.put( firstNodeId, rel.getId() );
+                    firstNextRel = secondNextRel = doNodeLoopStuff( rel );
                 }
                 else
                 {
-                    firstNextRel = nodeCache.get( firstNodeId );
-                    nodeCache.put( firstNodeId, rel.getId() );
-                    secondNextRel = nodeCache.get( secondNodeId );
-                    nodeCache.put( secondNodeId, rel.getId() );
+                    firstNextRel = doNodeStuff( firstNodeId, rel );
+                    secondNextRel = doNodeStuff( secondNodeId, rel );
                 }
+
                 assert firstNextRel != rel.getId();
                 assert secondNextRel != rel.getId();
                 rel.setFirstNextRel( firstNextRel );
@@ -254,6 +256,50 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 throw new BatchImportException( "[importRelationships_prepareRecords failed]", e );
             }
         }
+    }
+
+    private long doNodeLoopStuff( RelationshipRecord rel )
+    {
+        long nodeId = rel.getFirstNode();
+        if ( nodeIsDense( nodeId ) )
+        {   // dense
+            throw new UnsupportedOperationException( "We are lazy" );
+        }
+        else
+        {   // sparse
+            long result = nodeCache.get( nodeId );
+            nodeCache.put( nodeId, rel.getId() );
+            return result;
+        }
+    }
+
+    private long doNodeStuff( long nodeId, RelationshipRecord rel )
+    {
+        if ( nodeIsDense( nodeId ) )
+        {   // This is a dense node
+            long relGroupIndex = nodeCache.get( nodeId );
+            if ( relGroupIndex == -1 )
+            {
+                relGroupIndex = relationshipGroupCache.allocate( rel.getType(), Direction.OUTGOING, rel.getId() );
+                nodeCache.put( nodeId, relGroupIndex );
+                return -1;
+            }
+            else
+            {
+                return relationshipGroupCache.put( relGroupIndex, rel.getType(), Direction.OUTGOING, rel.getId() );
+            }
+        }
+        else
+        {   // This is a sparse node
+            long result = nodeCache.get( nodeId );
+            nodeCache.put( nodeId, rel.getId() );
+            return result;
+        }
+    }
+
+    private boolean nodeIsDense( long nodeId )
+    {
+        return nodeCache.getCount( nodeId ) >= 15;
     }
 
     public void importRelationships_writeStore( CSVDataBuffer buf ) throws BatchImportException

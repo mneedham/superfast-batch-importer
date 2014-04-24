@@ -19,17 +19,19 @@ import org.neo4j.batchimport.importer.stages.StageContext;
 import org.neo4j.batchimport.importer.stages.Stages;
 import org.neo4j.batchimport.importer.stages.WriterStage;
 import org.neo4j.batchimport.importer.stages.WriterStages;
-import org.neo4j.batchimport.importer.structs.CSVDataBuffer;
 import org.neo4j.batchimport.importer.structs.Constants;
 import org.neo4j.batchimport.importer.structs.Constants.ImportStageState;
 import org.neo4j.batchimport.importer.structs.DiskRecordsBuffer;
 import org.neo4j.batchimport.importer.structs.NodesCache;
+import org.neo4j.batchimport.importer.structs.RelationshipGroupCache;
 import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.batchimport.index.MapDbCachingIndexProvider;
 import org.neo4j.batchimport.utils.Config;
 import org.neo4j.graphdb.index.IndexManager;
+import org.neo4j.helpers.Factory;
 import org.neo4j.index.lucene.unsafe.batchinsert.LuceneBatchInserterIndexProvider;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
+import org.neo4j.kernel.impl.nioneo.store.RelationshipGroupStore;
 import org.neo4j.kernel.impl.util.FileUtils;
 import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
@@ -214,6 +216,19 @@ public class Importer
             report( "Node Import complete in ", milestone );
             stepTime = milestone = System.currentTimeMillis();
 
+            long nodeCount = db.getNeoStore().getNodeStore().getHighId();
+            nodeCache = new NodesCache( nodeCount );
+            db.setNodesCache( nodeCache );
+
+            NodeDegreeAccumulator discriminator = new NodeDegreeAccumulator( config, nodeCache );
+            for ( File file : config.getRelsFiles() )
+            {
+                discriminator.accumulate( Utils.createFileReader( file ) );
+                report( "\tRelationship file [" + file.getName() + "] imported in ", stepTime );
+            }
+
+            RelationshipGroupCache relGroupCache = new RelationshipGroupCache( (long)(0.05d * nodeCount * 4), db.getNeoStore().getRelationshipGroupStore() );
+
             for ( File file : config.getRelsFiles() )
             {
                 importRelationships( Utils.createFileReader( file ) );
@@ -315,8 +330,6 @@ public class Importer
 
     private void setupStagesForRelationships() throws BatchImportException
     {
-        nodeCache = new NodesCache( db.getNeoStore().getNodeStore().getHighId() );
-        db.setNodesCache( nodeCache );
         relationLinkbackNeeded = true;
         try
         {

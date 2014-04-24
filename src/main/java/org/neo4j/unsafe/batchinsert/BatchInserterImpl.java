@@ -41,7 +41,6 @@ import org.neo4j.graphdb.schema.ConstraintCreator;
 import org.neo4j.graphdb.schema.ConstraintDefinition;
 import org.neo4j.graphdb.schema.IndexCreator;
 import org.neo4j.graphdb.schema.IndexDefinition;
-import org.neo4j.helpers.FunctionFromPrimitiveLong;
 import org.neo4j.helpers.Settings;
 import org.neo4j.helpers.collection.Visitor;
 import org.neo4j.kernel.DefaultFileSystemAbstraction;

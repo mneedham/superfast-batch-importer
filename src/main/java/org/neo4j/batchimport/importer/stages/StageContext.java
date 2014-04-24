@@ -35,6 +35,7 @@ public class StageContext
         }
         catch ( Exception ioe )
         {
+            ioe.printStackTrace();
             throw new BatchImportException( "[Bad input data]" + ioe.getMessage() );
         }
     }

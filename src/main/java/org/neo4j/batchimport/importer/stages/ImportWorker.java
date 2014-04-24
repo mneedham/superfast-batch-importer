@@ -24,6 +24,22 @@ public class ImportWorker extends java.lang.Thread
         this.stages = stages;
     }
 
+    public static void debugSetCurrentMethod()
+    {
+        if ( threadImportWorker.get() != null )
+        {
+            threadImportWorker.get().setCurrentMethod();
+        }
+    }
+
+    public static void debugSetCurrentMethod( String method )
+    {
+        if ( threadImportWorker.get() != null )
+        {
+            threadImportWorker.get().setCurrentMethod( method );
+        }
+    }
+
     public int getThreadIndex()
     {
         return threadIndex;

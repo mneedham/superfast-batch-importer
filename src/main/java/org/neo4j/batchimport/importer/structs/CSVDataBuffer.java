@@ -3,9 +3,9 @@ package org.neo4j.batchimport.importer.structs;
 public class CSVDataBuffer extends AbstractDataBuffer
 {
 
-    public CSVDataBuffer( int maxEntries, int bufSize, int index, DiskRecordsCache diskCache )
+    public CSVDataBuffer( int maxEntries, int bufSize, DiskRecordsCache diskCache, int numberOfDiskRecordBuffers )
     {
-        super( maxEntries, bufSize, index, diskCache );
+        super( maxEntries, bufSize, diskCache, numberOfDiskRecordBuffers );
     }
 
     public long setIdFromData( int index, int column )

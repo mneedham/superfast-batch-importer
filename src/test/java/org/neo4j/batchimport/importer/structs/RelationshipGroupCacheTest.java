@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import org.neo4j.graphdb.Direction;
 import org.neo4j.helpers.Factory;
+import org.neo4j.kernel.impl.nioneo.store.IdSequence;
 
 import static org.junit.Assert.assertEquals;
 
@@ -17,7 +18,7 @@ public class RelationshipGroupCacheTest
         int type = 1;
         Direction direction = Direction.INCOMING;
         long relId = 15;
-        Factory<Long> assigner = new CapturingRelationshipGroupIdAssigner();
+        IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
         RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
 
         // then
@@ -34,7 +35,7 @@ public class RelationshipGroupCacheTest
         int type1 = 1;
         int type2 = 2;
         Direction direction = Direction.INCOMING;
-        Factory<Long> assigner = new CapturingRelationshipGroupIdAssigner();
+        IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
         RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
 
         // then
@@ -61,7 +62,7 @@ public class RelationshipGroupCacheTest
         int type = 1;
         Direction direction1 = Direction.INCOMING;
         Direction direction2 = Direction.OUTGOING;
-        Factory<Long> assigner = new CapturingRelationshipGroupIdAssigner();
+        IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
         RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
 
         // then
@@ -87,7 +88,7 @@ public class RelationshipGroupCacheTest
         long nodeCount = 1000;
         int type = 1;
         Direction direction = Direction.INCOMING;
-        Factory<Long> assigner = new CapturingRelationshipGroupIdAssigner();
+        IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
         RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
 
         // then
@@ -116,12 +117,12 @@ public class RelationshipGroupCacheTest
         // then
     }
 
-    private class CapturingRelationshipGroupIdAssigner implements Factory<Long>
+    private class CapturingRelationshipGroupIdAssigner implements IdSequence
     {
         private long nextId;
 
         @Override
-        public Long newInstance()
+        public long nextId()
         {
             return nextId++;
         }

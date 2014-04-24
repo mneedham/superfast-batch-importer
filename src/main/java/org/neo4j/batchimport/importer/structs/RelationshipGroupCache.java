@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 import org.neo4j.graphdb.Direction;
 import org.neo4j.helpers.Factory;
+import org.neo4j.kernel.impl.nioneo.store.IdSequence;
 
 public class RelationshipGroupCache
 {
@@ -23,14 +24,14 @@ public class RelationshipGroupCache
 
     public static final int ARRAY_ROW_SIZE = 5;
     public static final int EMPTY = -1;
-    private final Factory<Long> relationshipGroupIdAssigner;
+    private final IdSequence relationshipGroupIdAssigner;
     private long[] cache;
     private int nextFreeId = 0;
 
-    public RelationshipGroupCache( long nodeCount, Factory<Long> relationshipGroupIdAssigner )
+    public RelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner )
     {
         this.relationshipGroupIdAssigner = relationshipGroupIdAssigner;
-        cache = new long[(int) (nodeCount * ARRAY_ROW_SIZE)];
+        cache = new long[(int) (denseNodeCount * ARRAY_ROW_SIZE)];
         Arrays.fill( cache, EMPTY );
     }
 
@@ -87,7 +88,7 @@ public class RelationshipGroupCache
     private void initializeGroup( long relGroupCachePosition, int type )
     {
         cache[physicalIndex( relGroupCachePosition, INDEX_TYPE )] = type;
-        cache[physicalIndex( relGroupCachePosition, INDEX_ID )] = relationshipGroupIdAssigner.newInstance();
+        cache[physicalIndex( relGroupCachePosition, INDEX_ID )] = relationshipGroupIdAssigner.nextId();
     }
 
     private long set( long relGroupCachePosition, int index, long newValue )

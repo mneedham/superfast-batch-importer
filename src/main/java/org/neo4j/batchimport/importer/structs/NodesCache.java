@@ -40,18 +40,8 @@ public class NodesCache
 
     public void put( long key, long value )
     {
-        this.put( key, value, false );
-    }
-
-    public void put( long key, long value, boolean keepCount )
-    {
-        if ( keepCount )
-        {
-            long count = nodeCache[getCacheIndex( key )][getIndex( key )] & LEFTOVER_BIT_MASK;
-            nodeCache[getCacheIndex( key )][getIndex( key )] = count & value;
-        }
-        else
-            nodeCache[getCacheIndex( key )][getIndex( key )] = value;
+        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & LEFTOVER_BIT_MASK;
+        nodeCache[getCacheIndex( key )][getIndex( key )] = count & value;
     }
 
     public long get( long key )
