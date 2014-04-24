@@ -3,7 +3,6 @@ package org.neo4j.batchimport.importer.structs;
 import java.util.Arrays;
 
 import org.neo4j.graphdb.Direction;
-import org.neo4j.helpers.Factory;
 import org.neo4j.kernel.impl.nioneo.store.IdSequence;
 
 public class RelationshipGroupCache
@@ -25,7 +24,7 @@ public class RelationshipGroupCache
     public static final int ARRAY_ROW_SIZE = 5;
     public static final int EMPTY = -1;
     private final IdSequence relationshipGroupIdAssigner;
-    private long[] cache;
+    private final long[] cache;
     private int nextFreeId = 0;
 
     public RelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner )

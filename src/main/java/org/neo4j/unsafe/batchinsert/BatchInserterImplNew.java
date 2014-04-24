@@ -52,9 +52,13 @@ public class BatchInserterImplNew extends BatchInserterImpl
         neoStore = this.getNeoStore();
     }
 
-    public void setCaches( NodesCache nodesCache, RelationshipGroupCache relationshipGroupCache )
+    public void setNodeCache( NodesCache nodesCache )
     {
         this.nodeCache = nodesCache;
+    }
+
+    public void setRelationshipGroupCache( RelationshipGroupCache relationshipGroupCache )
+    {
         this.relationshipGroupCache = relationshipGroupCache;
     }
 
@@ -140,7 +144,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
         {
             for ( int index = 0; index < buf.getCurEntries(); index++ )
             {
-                NodeRecord nodeRecord = new NodeRecord( buf.getId( index ), Record.NO_NEXT_RELATIONSHIP.intValue(),
+                NodeRecord nodeRecord = new NodeRecord( buf.getId( index ), false,
+                        Record.NO_NEXT_RELATIONSHIP.intValue(),
                         Record.NO_NEXT_PROPERTY.intValue() );
                 nodeRecord.setInUse( true );
                 nodeRecord.setCreated();

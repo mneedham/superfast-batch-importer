@@ -3,7 +3,6 @@ package org.neo4j.batchimport.importer.structs;
 import org.junit.Test;
 
 import org.neo4j.graphdb.Direction;
-import org.neo4j.helpers.Factory;
 import org.neo4j.kernel.impl.nioneo.store.IdSequence;
 
 import static org.junit.Assert.assertEquals;

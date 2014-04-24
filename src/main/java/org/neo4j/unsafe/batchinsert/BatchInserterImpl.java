@@ -32,6 +32,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.neo4j.collection.primitive.PrimitiveLongCollections;
+import org.neo4j.function.primitive.FunctionFromPrimitiveLong;
 import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.NotFoundException;
@@ -41,6 +43,7 @@ import org.neo4j.graphdb.schema.ConstraintCreator;
 import org.neo4j.graphdb.schema.ConstraintDefinition;
 import org.neo4j.graphdb.schema.IndexCreator;
 import org.neo4j.graphdb.schema.IndexDefinition;
+import org.neo4j.helpers.Provider;
 import org.neo4j.helpers.Settings;
 import org.neo4j.helpers.collection.Visitor;
 import org.neo4j.kernel.DefaultFileSystemAbstraction;
@@ -53,6 +56,7 @@ import org.neo4j.kernel.StoreLocker;
 import org.neo4j.kernel.api.constraints.UniquenessConstraint;
 import org.neo4j.kernel.api.exceptions.KernelException;
 import org.neo4j.kernel.api.index.IndexConfiguration;
+import org.neo4j.kernel.api.index.IndexDescriptor;
 import org.neo4j.kernel.api.index.IndexEntryConflictException;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.InternalIndexState;
@@ -119,16 +123,15 @@ import org.neo4j.kernel.logging.SingleLoggingService;
 
 import static java.lang.Boolean.parseBoolean;
 
+import static org.neo4j.collection.primitive.PrimitiveLongCollections.map;
 import static org.neo4j.graphdb.DynamicLabel.label;
-import static org.neo4j.helpers.collection.Iterables.map;
-import static org.neo4j.helpers.collection.IteratorUtil.asPrimitiveIterator;
 import static org.neo4j.helpers.collection.IteratorUtil.first;
 import static org.neo4j.helpers.collection.IteratorUtil.iterator;
 import static org.neo4j.kernel.impl.nioneo.store.PropertyStore.encodeString;
 import static org.neo4j.kernel.impl.nioneo.store.labels.NodeLabelsField.parseLabelsField;
 import static org.neo4j.kernel.impl.util.IoPrimitiveUtils.safeCastLongToInt;
 
-public class BatchInserterImpl implements BatchInserter
+public class BatchInserterImpl implements BatchInserter, Provider<PropertyStore>
 {
     private static final long MAX_NODE_ID = IdType.NODE.getMaxValue();
 
@@ -163,7 +166,7 @@ public class BatchInserterImpl implements BatchInserter
     private boolean isShutdown = false;
 
     // Helper structure for setNodeProperty
-    private Set<PropertyRecord> updatedRecords = new HashSet<PropertyRecord>();
+    private final Set<PropertyRecord> updatedRecords = new HashSet<PropertyRecord>();
 
 
     BatchInserterImpl( String storeDir,
@@ -348,7 +351,7 @@ public class BatchInserterImpl implements BatchInserter
 
             populators[i] = schemaIndexProviders.apply(
                     rule.getProviderDescriptor() ).getPopulator( rule.getId(),
-                    //new IndexDescriptor(labelIds[i], propertyKeyIds[i]),
+                    new IndexDescriptor( labelIds[i], propertyKeyIds[i] ),
                     new IndexConfiguration( rule.isConstraintIndex() ) );
             populators[i].create();
         }
@@ -411,7 +414,14 @@ public class BatchInserterImpl implements BatchInserter
 
         private void writeAndResetBatch() throws IOException
         {
-            labelScanStore.updateAndCommit( iterator( cursor, updateBatch ) );
+            try ( LabelScanWriter writer = labelScanStore.newWriter() )
+            {
+                Iterator<NodeLabelUpdate> iterator = iterator( cursor, updateBatch );
+                while ( iterator.hasNext() )
+                {
+                    writer.write( iterator.next() );
+                }
+            }
             //labelScanStore.recover( iterator( cursor, updateBatch ) );
             cursor = 0;
         }
@@ -748,7 +758,7 @@ public class BatchInserterImpl implements BatchInserter
 
     private long internalCreateNode( long nodeId, Map<String, Object> properties, Label... labels )
     {
-        NodeRecord nodeRecord = new NodeRecord( nodeId, Record.NO_NEXT_RELATIONSHIP.intValue(),
+        NodeRecord nodeRecord = new NodeRecord( nodeId, false, Record.NO_NEXT_RELATIONSHIP.intValue(),
                 Record.NO_NEXT_PROPERTY.intValue() );
         nodeRecord.setInUse( true );
         nodeRecord.setCreated();
@@ -763,7 +773,8 @@ public class BatchInserterImpl implements BatchInserter
     protected void setNodeLabels( NodeRecord nodeRecord, Label... labels )
     {
         NodeLabels nodeLabels = parseLabelsField( nodeRecord );
-        getNodeStore().updateDynamicLabelRecords( nodeLabels.put( getOrCreateLabelIds( labels ), getNodeStore() ) );
+        getNodeStore().updateDynamicLabelRecords( nodeLabels.put( getOrCreateLabelIds( labels ), getNodeStore(),
+                getNodeStore().getDynamicLabelStore() ) );
     }
 
     private long[] getOrCreateLabelIds( Label[] labels )
@@ -818,7 +829,7 @@ public class BatchInserterImpl implements BatchInserter
             {
                 NodeStore nodeStore = neoStore.getNodeStore();
                 long[] labels = parseLabelsField( nodeStore.getRecord( node ) ).get( getNodeStore() );
-                return map( labelIdToLabelFunction, asPrimitiveIterator( labels ) );
+                return map( labelIdToLabelFunction, PrimitiveLongCollections.iterator( labels ) );
             }
         };
     }
@@ -1195,7 +1206,7 @@ public class BatchInserterImpl implements BatchInserter
             for ( PropertyBlock propBlock : propRecord.getPropertyBlocks() )
             {
                 String key = propertyKeyTokens.nameOf( propBlock.getKeyIndexId() );
-                DefinedProperty propertyData = propBlock.newPropertyData( propStore );
+                DefinedProperty propertyData = propBlock.newPropertyData( this );
                 Object value = propertyData.value() != null ? propertyData.value() :
                         propBlock.getType().getValue( propBlock, getPropertyStore() );
                 properties.put( key, value );
@@ -1469,4 +1480,9 @@ public class BatchInserterImpl implements BatchInserter
         }
     }
 
+    @Override
+    public PropertyStore instance()
+    {
+        return getPropertyStore();
+    }
 }

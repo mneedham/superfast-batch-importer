@@ -28,10 +28,8 @@ import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.batchimport.index.MapDbCachingIndexProvider;
 import org.neo4j.batchimport.utils.Config;
 import org.neo4j.graphdb.index.IndexManager;
-import org.neo4j.helpers.Factory;
 import org.neo4j.index.lucene.unsafe.batchinsert.LuceneBatchInserterIndexProvider;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
-import org.neo4j.kernel.impl.nioneo.store.RelationshipGroupStore;
 import org.neo4j.kernel.impl.util.FileUtils;
 import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
@@ -47,11 +45,11 @@ public class Importer
     public static final int BATCH = 1 * 1000 * 1000;
     private static Report report;
     private final Config config;
-    private BatchInserterIndexProvider indexProvider;
+    private final BatchInserterIndexProvider indexProvider;
     Map<String, BatchInserterIndex> indexes = new HashMap<>();
     public static long startImport = 0;
 
-    private BatchInserterImplNew db;
+    private final BatchInserterImplNew db;
     private Stages importStages = null;
     private NodesCache nodeCache = null;
     private boolean relationLinkbackNeeded = false;
@@ -218,7 +216,7 @@ public class Importer
 
             long nodeCount = db.getNeoStore().getNodeStore().getHighId();
             nodeCache = new NodesCache( nodeCount );
-            db.setNodesCache( nodeCache );
+            db.setNodeCache( nodeCache );
 
             NodeDegreeAccumulator discriminator = new NodeDegreeAccumulator( config, nodeCache );
             for ( File file : config.getRelsFiles() )
@@ -228,6 +226,7 @@ public class Importer
             }
 
             RelationshipGroupCache relGroupCache = new RelationshipGroupCache( (long)(0.05d * nodeCount * 4), db.getNeoStore().getRelationshipGroupStore() );
+            db.setRelationshipGroupCache( relGroupCache );
 
             for ( File file : config.getRelsFiles() )
             {

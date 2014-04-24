@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.neo4j.helpers.Provider;
 import org.neo4j.kernel.api.properties.DefinedProperty;
 
 public class PropertyBlock implements Cloneable
@@ -235,7 +236,7 @@ public class PropertyBlock implements Cloneable
         return Arrays.equals( valueBlocks, other.valueBlocks );
     }
 
-    public DefinedProperty newPropertyData( PropertyStore propertyStore )
+    public DefinedProperty newPropertyData( Provider<PropertyStore> propertyStore )
     {
         return getType().readProperty( getKeyIndexId(), this, propertyStore );
     }

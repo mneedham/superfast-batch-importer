@@ -12,7 +12,6 @@ import org.neo4j.kernel.impl.nioneo.store.NodeRecord;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.eq;
 
-
 /**
  * @author Michael Hunger @since 02.11.13
  */
@@ -59,7 +58,7 @@ public class InlineNodeLabelsTest
     public void testPerformance() throws Exception
     {
         long[] ids = {3, 2, 6, 4};
-        InlineNodeLabels inlineNodeLabels = new InlineNodeLabels( 0L, new NodeRecord( 0, -1, -1 ) );
+        InlineNodeLabels inlineNodeLabels = new InlineNodeLabels( 0L, new NodeRecord( 0, false, -1, -1 ) );
         long time = System.currentTimeMillis();
         for ( int i = 0; i < 1_0000_000; i++ )
         {
