@@ -4,8 +4,12 @@ import java.util.Arrays;
 
 public class NodesCache
 {
-    private static final long LEFTOVER_BIT_MASK = 0xFFFFFFF8_00000000L;
-    public static final int MAX_COUNT = (1 << 29) - 1;
+    public static final int COUNT_BITS = 28;
+    public static final int MAX_COUNT = (1 << COUNT_BITS) - 1;
+    public static final int ID_BITS = 64-(COUNT_BITS+1);
+    private static final long COUNT_BIT_MASK = 0x7FFFFFF8_00000000L;
+    private static final long VISITED_BIT_MASK = 0x80000000_00000000L;
+    private static final long ID_BIT_MASK = ~(COUNT_BIT_MASK | VISITED_BIT_MASK);
     private long[][] nodeCache = null;
     private int numCache = 0;
     private long size = 0;
@@ -40,28 +44,28 @@ public class NodesCache
 
     public void put( long key, long value )
     {
-        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & LEFTOVER_BIT_MASK;
+        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & COUNT_BIT_MASK;
         nodeCache[getCacheIndex( key )][getIndex( key )] = count | value;
     }
 
     public long get( long key )
     {
         int i = getCacheIndex( key ), j = getIndex( key );
-        long result = nodeCache[i][j] & ~LEFTOVER_BIT_MASK;
-        return result == ~LEFTOVER_BIT_MASK ? -1 : result;
+        long result = nodeCache[i][j] & ID_BIT_MASK;
+        return result == ID_BIT_MASK ? -1 : result;
     }
 
     int changeCount( long key, int value )
     {
-        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & LEFTOVER_BIT_MASK;
-        long id = nodeCache[getCacheIndex( key )][getIndex( key )] & ~LEFTOVER_BIT_MASK;
-        count = count >>> 35;
+        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & COUNT_BIT_MASK;
+        long otherBits = nodeCache[getCacheIndex( key )][getIndex( key )] & ~COUNT_BIT_MASK;
+        count = count >>> ID_BITS;
         count += value;
         if ( count < 0 || count > MAX_COUNT )
         {
             throw new IllegalStateException( "tried to decrement counter below zero." );
         }
-        nodeCache[getCacheIndex( key )][getIndex( key )] = (count << 35) | id;
+        nodeCache[getCacheIndex( key )][getIndex( key )] = (count << ID_BITS) | otherBits;
         return (int) count;
     }
 
@@ -77,20 +81,31 @@ public class NodesCache
 
     public int getCount( long key )
     {
-        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & 0xFFFFFFF800000000L;
-        count = count >>> 35;
+        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & COUNT_BIT_MASK;
+        count = count >>> ID_BITS;
         return (int) count;
     }
+
     public void clean()
     {
         for ( int i = 0; i < numCache; i++ )
         {
-            Arrays.fill( nodeCache[i], ~LEFTOVER_BIT_MASK );
+            Arrays.fill( nodeCache[i], ID_BIT_MASK );
         }
     }
 
     public int maxCount()
     {
         return MAX_COUNT;
+    }
+
+    public boolean checkAndSetVisited( long nodeId )
+    {
+        if ( (nodeCache[getCacheIndex( nodeId )][getIndex( nodeId )] & VISITED_BIT_MASK) != 0 )
+        {
+            return true;
+        }
+        nodeCache[getCacheIndex( nodeId )][getIndex( nodeId )] |= VISITED_BIT_MASK;
+        return false;
     }
 }
