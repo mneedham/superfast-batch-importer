@@ -1,18 +1,13 @@
 package org.neo4j.batchimport.importer.structs;
 
-import java.util.Arrays;
 
 public class NodesCache
 {
-    public static final int COUNT_BITS = 28;
-    public static final int MAX_COUNT = (1 << COUNT_BITS) - 1;
-    public static final int ID_BITS = 64-(COUNT_BITS+1);
-    private static final long COUNT_BIT_MASK = 0x7FFFFFF8_00000000L;
-    private static final long VISITED_BIT_MASK = 0x80000000_00000000L;
-    private static final long ID_BIT_MASK = ~(COUNT_BIT_MASK | VISITED_BIT_MASK);
     private long[][] nodeCache = null;
     private int numCache = 0;
     private long size = 0;
+    private int denseNodeThreshold = -1;
+    private long denseNodeCount = -1;
 
     public NodesCache( long nodeCount )
     {
@@ -24,7 +19,7 @@ public class NodesCache
             nodeCache[i] = new long[Integer.MAX_VALUE];
         }
         size = nodeCount;
-        this.clean();
+        this.cleanIds();
     }
 
     private int getCacheIndex( long id )
@@ -42,31 +37,39 @@ public class NodesCache
         return size;
     }
 
-    public void put( long key, long value )
+    public long put( long key, long value )
     {
-        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & COUNT_BIT_MASK;
-        nodeCache[getCacheIndex( key )][getIndex( key )] = count | value;
+        long field = getField( key );
+        long previousValue = IdFieldManipulator.getId( field );
+        setField( key, IdFieldManipulator.setId( field, value ) );
+        return previousValue;
+    }
+
+    private void setField( long key, long field )
+    {
+        long[] cache = nodeCache[getCacheIndex( key )];
+        int index = getIndex( key );
+        cache[index] = field;
+    }
+
+    private long getField( long key )
+    {
+        long[] cache = nodeCache[getCacheIndex( key )];
+        int index = getIndex( key );
+        return cache[index];
     }
 
     public long get( long key )
     {
-        int i = getCacheIndex( key ), j = getIndex( key );
-        long result = nodeCache[i][j] & ID_BIT_MASK;
-        return result == ID_BIT_MASK ? -1 : result;
+        return IdFieldManipulator.getId( getField( key ) );
     }
 
-    int changeCount( long key, int value )
+    int changeCount( long key, int diff )
     {
-        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & COUNT_BIT_MASK;
-        long otherBits = nodeCache[getCacheIndex( key )][getIndex( key )] & ~COUNT_BIT_MASK;
-        count = count >>> ID_BITS;
-        count += value;
-        if ( count < 0 || count > MAX_COUNT )
-        {
-            throw new IllegalStateException( "tried to decrement counter below zero." );
-        }
-        nodeCache[getCacheIndex( key )][getIndex( key )] = (count << ID_BITS) | otherBits;
-        return (int) count;
+        long field = IdFieldManipulator.changeCount( getField( key ), diff );
+        int count = IdFieldManipulator.getCount( field );
+        setField( key, field );
+        return count;
     }
 
     public int incrementCount( long key )
@@ -81,31 +84,83 @@ public class NodesCache
 
     public int getCount( long key )
     {
-        long count = nodeCache[getCacheIndex( key )][getIndex( key )] & COUNT_BIT_MASK;
-        count = count >>> ID_BITS;
-        return (int) count;
+        return IdFieldManipulator.getCount( getField( key ) );
     }
 
-    public void clean()
+    public void cleanIds()
     {
         for ( int i = 0; i < numCache; i++ )
         {
-            Arrays.fill( nodeCache[i], ID_BIT_MASK );
+            for ( int j = 0; j < nodeCache[i].length; j++ )
+            {
+                nodeCache[i][j] = IdFieldManipulator.cleanId( nodeCache[i][j] );
+            }
         }
     }
 
     public int maxCount()
     {
-        return MAX_COUNT;
+        return IdFieldManipulator.MAX_COUNT;
     }
 
-    public boolean checkAndSetVisited( long nodeId )
+    public boolean nodeIsDense( long key )
     {
-        if ( (nodeCache[getCacheIndex( nodeId )][getIndex( nodeId )] & VISITED_BIT_MASK) != 0 )
+        return getCount( key ) >= denseNodeThreshold;
+    }
+
+    public boolean checkAndSetVisited( long key )
+    {
+        long field = getField( key );
+        if ( IdFieldManipulator.isVisited( field ) )
         {
             return true;
         }
-        nodeCache[getCacheIndex( nodeId )][getIndex( nodeId )] |= VISITED_BIT_MASK;
+        setField( key, IdFieldManipulator.setVisited( field ) );
         return false;
+    }
+
+    public void calculateDenseNodeThreshold( double percent )
+    {
+//        for ( long[] chard : nodeCache )
+//        {
+//            for ( long raw : chard )
+//            {
+//                long count = (raw & COUNT_BIT_MASK) >>> ID_BITS;
+//            }
+//        }
+        // TODO
+
+        denseNodeThreshold = 15; // obviously hard coded and bad
+
+        denseNodeCount = 0;
+        for ( long[] chard : nodeCache )
+        {
+            for ( long field : chard )
+            {
+                long count = IdFieldManipulator.getCount( field );
+                if ( count >= denseNodeThreshold )
+                {
+                    denseNodeCount++;
+                }
+            }
+        }
+    }
+
+    public int getDenseNodeThreshold()
+    {
+        if ( denseNodeThreshold == -1 )
+        {
+            throw new IllegalStateException( "Not calculated yet" );
+        }
+        return denseNodeThreshold;
+    }
+
+    public long getDenseNodeCount()
+    {
+        if ( denseNodeCount == -1 )
+        {
+            throw new IllegalStateException( "Not calculated yet" );
+        }
+        return denseNodeCount;
     }
 }

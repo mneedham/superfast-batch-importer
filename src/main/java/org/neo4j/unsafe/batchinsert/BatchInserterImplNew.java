@@ -268,7 +268,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
     private long doNodeLoopStuff( RelationshipRecord rel )
     {
         long nodeId = rel.getFirstNode();
-        if ( nodeIsDense( nodeId ) )
+        if ( nodeCache.nodeIsDense( nodeId ) )
         {   // dense
             throw new UnsupportedOperationException( "We are lazy" );
         }
@@ -282,7 +282,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
 
     private long doNodeStuff( long nodeId, RelationshipRecord rel )
     {
-        if ( nodeIsDense( nodeId ) )
+        if ( nodeCache.nodeIsDense( nodeId ) )
         {   // This is a dense node
             long relGroupIndex = nodeCache.get( nodeId );
             if ( relGroupIndex == -1 )
@@ -293,7 +293,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             else
             {
-                return relationshipGroupCache.put( relGroupIndex, rel.getType(), Direction.OUTGOING, rel.getId() );
+                return relationshipGroupCache.put( relGroupIndex, rel.getType(), Direction.OUTGOING, rel.getId(), true );
             }
         }
         else
@@ -302,12 +302,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
             nodeCache.put( nodeId, rel.getId() );
             return result;
         }
-    }
-
-    private boolean nodeIsDense( long nodeId )
-    {
-//        return nodeCache.getCount( nodeId ) >= 15;
-        return false;
     }
 
     public void importRelationships_writeStore( CSVDataBuffer buf ) throws BatchImportException
@@ -511,7 +505,15 @@ public class BatchInserterImplNew extends BatchInserterImpl
             try
             {
                 nodeRec = getNodeStore().getRecord( id );
-                nodeRec.setNextRel( nodeCache.get( id ) );
+                if ( nodeCache.nodeIsDense( id ) )
+                {
+                    nodeRec.setDense( true );
+                    nodeRec.setNextRel( relationshipGroupCache.getFirstRelGroupId( nodeCache.get( id ) ) );
+                }
+                else
+                {
+                    nodeRec.setNextRel( nodeCache.get( id ) );
+                }
                 getNodeStore().updateRecord( nodeRec );
             }
             catch ( Exception e )
@@ -555,7 +557,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
         else
         {
-            nodeCache.clean();
+            nodeCache.cleanIds();
         }
         long startLinkBack = prev = System.currentTimeMillis();
         for ( long id = maxRelId - 1; id >= 0; id-- )
@@ -575,6 +577,31 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 {
                     relRecord.setFirstPrevRel( nodeCache.get( firstNode ) );
                     relRecord.setSecondPrevRel( nodeCache.get( secondNode ) );
+
+                    if ( firstNode == secondNode )
+                    {
+                        if ( !nodeCache.checkAndSetVisited( firstNode ) )
+                        {   // First relationship for this node
+                            relRecord.setFirstInFirstChain( true );
+                            relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
+                            relRecord.setFirstInSecondChain( true );
+                            relRecord.setSecondPrevRel( nodeCache.getCount( firstNode ) );
+                        }
+                    }
+                    else
+                    {
+                        if ( !nodeCache.checkAndSetVisited( firstNode ) )
+                        {   // First relationship for this node
+                            relRecord.setFirstInFirstChain( true );
+                            relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
+                        }
+                        if ( !nodeCache.checkAndSetVisited( secondNode ) )
+                        {   // First relationship for this node
+                            relRecord.setFirstInSecondChain( true );
+                            relRecord.setSecondPrevRel( nodeCache.getCount( secondNode ) );
+                        }
+                    }
+
                     neoStore.getRelationshipStore().updateRecord( relRecord );
                 }
                 nodeCache.put( firstNode, relId );

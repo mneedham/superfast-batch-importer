@@ -225,7 +225,10 @@ public class Importer
                 report( "\tRelationship file [" + file.getName() + "] imported in ", stepTime );
             }
 
-            RelationshipGroupCache relGroupCache = new RelationshipGroupCache( (long)(0.05d * nodeCount * 4), db.getNeoStore().getRelationshipGroupStore() );
+            long denseNodeCount = nodeCache.getDenseNodeCount();
+            int relTypeCount = 4; // TODO figure out the real value
+            RelationshipGroupCache relGroupCache = new RelationshipGroupCache( denseNodeCount * relTypeCount,
+                    db.getNeoStore().getRelationshipGroupStore() );
             db.setRelationshipGroupCache( relGroupCache );
 
             for ( File file : config.getRelsFiles() )

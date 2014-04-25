@@ -128,4 +128,22 @@ public class NodesCacheTest
         assertTrue( cache.checkAndSetVisited( 1 ) );
         assertEquals( count-1, cache.getCount( 1 ) );
     }
+
+    @Test
+    public void idChangeShouldNotAffectOtherBits() throws Exception
+    {
+        // GIVEN
+        NodesCache cache = new NodesCache( 100 );
+        long nodeId = 1;
+        cache.put( nodeId, 10 );
+        cache.changeCount( nodeId, 123 );
+        cache.checkAndSetVisited( nodeId );
+
+        // WHEN
+        assertEquals( 10, cache.put( nodeId, 11 ) );
+
+        // THEN
+        assertEquals( 123, cache.getCount( nodeId ) );
+        assertTrue( cache.checkAndSetVisited( nodeId ) );
+    }
 }

@@ -32,7 +32,7 @@ import static org.neo4j.helpers.collection.MapUtil.stringMap;
 public class ImporterIntegrationTest
 {
     public static final String DB_DIRECTORY = "target/index-reuse1.db";
-    public static final int NODE_COUNT = 10000;
+    public static final int NODE_COUNT = 100_000;
     public static final int RELATIONSHIPS_PER_NODE = 10;
 
     @Test
@@ -82,4 +82,3 @@ public class ImporterIntegrationTest
         }
     }
 }
-

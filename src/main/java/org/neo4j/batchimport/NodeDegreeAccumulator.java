@@ -42,5 +42,6 @@ public class NodeDegreeAccumulator
             }
         }
         while ( buffer.isMoreData() );
+        nodeCache.calculateDenseNodeThreshold( 0.02d );
     }
 }

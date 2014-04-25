@@ -6,6 +6,8 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.kernel.impl.nioneo.store.IdSequence;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class RelationshipGroupCacheTest
 {
@@ -22,34 +24,68 @@ public class RelationshipGroupCacheTest
 
         // then
         long relGroupCachePosition = cache.allocate( type, direction, relId );
-        long previousRel = cache.put( relGroupCachePosition, type, direction, relId + 1 );
+        long previousRel = cache.put( relGroupCachePosition, type, direction, relId + 1, true );
         assertEquals( relId, previousRel );
     }
 
     @Test
-    public void shouldStoreRelationshipsOfDifferentTypes() throws Exception
+    public void shouldStoreRelationshipsOfDifferentTypesInAscendingOrder() throws Exception
     {
         // given
+        int[] types = new int[] {1,2};
+        testRelationshipsOfDifferentTypes( types );
+    }
+
+    @Test
+    public void shouldStoreRelationshipsOfDifferentTypesInDescendingOrder() throws Exception
+    {
+        // given
+        int[] types = new int[] {2,1};
+        testRelationshipsOfDifferentTypes( types );
+    }
+
+    @Test
+    public void shouldStoreRelationshipsOfDifferentTypesInRandomOrder1() throws Exception
+    {
+        // given
+        int[] types = new int[] {1,3,2};
+        testRelationshipsOfDifferentTypes( types );
+    }
+
+    @Test
+    public void shouldStoreRelationshipsOfDifferentTypesInRandomOrder2() throws Exception
+    {
+        // given
+        int[] types = new int[] {3,1,2};
+        testRelationshipsOfDifferentTypes( types );
+    }
+
+    private void testRelationshipsOfDifferentTypes( int[] types )
+    {
         long nodeCount = 1000;
-        int type1 = 1;
-        int type2 = 2;
         Direction direction = Direction.INCOMING;
         IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
         RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
 
         // then
-        long type1RelId = 15;
-        long type2RelId = 22;
-        long relGroupCachePosition = cache.allocate( type1, direction, type1RelId );
+        long relGroupCachePosition = -1;
+        for ( int i = 0; i < types.length; i++ )
         {
-            long previousRel = cache.put( relGroupCachePosition, type1, direction, type1RelId + 1 );
-            assertEquals( type1RelId, previousRel );
-        }
-        {
-            long noSuchRel = cache.put( relGroupCachePosition, type2, direction, type2RelId );
-            assertEquals( -1, noSuchRel );
-            long previousRel = cache.put( relGroupCachePosition, type2, direction, type2RelId + 1 );
-            assertEquals( type2RelId, previousRel );
+            int type = types[i];
+            long relId = 15*type;
+            if ( i == 0 )
+            {
+                relGroupCachePosition = cache.allocate( type, direction, relId );
+                long previousRel = cache.put( relGroupCachePosition, type, direction, relId+1, true );
+                assertEquals( relId, previousRel );
+            }
+            else
+            {
+                long noSuchRel = cache.put( relGroupCachePosition, type, direction, relId, true );
+                assertEquals( -1, noSuchRel );
+                long previousRel = cache.put( relGroupCachePosition, type, direction, relId+1, true );
+                assertEquals( relId, previousRel );
+            }
         }
     }
 
@@ -68,15 +104,19 @@ public class RelationshipGroupCacheTest
         long type1RelId = 15;
         long type2RelId = 22;
         long relGroupCachePosition = cache.allocate( type, direction1, type1RelId );
+        assertEquals( 1, cache.getCount( relGroupCachePosition, type, direction1 ) );
         {
-            long previousRel = cache.put( relGroupCachePosition, type, direction1, type1RelId + 1 );
+            long previousRel = cache.put( relGroupCachePosition, type, direction1, type1RelId + 1, true );
             assertEquals( type1RelId, previousRel );
+            assertEquals( 2, cache.getCount( relGroupCachePosition, type, direction1 ) );
         }
         {
-            long noSuchRel = cache.put( relGroupCachePosition, type, direction2, type2RelId );
+            long noSuchRel = cache.put( relGroupCachePosition, type, direction2, type2RelId, true );
             assertEquals( -1, noSuchRel );
-            long previousRel = cache.put( relGroupCachePosition, type, direction2, type2RelId + 1 );
+            assertEquals( 1, cache.getCount( relGroupCachePosition, type, direction2 ) );
+            long previousRel = cache.put( relGroupCachePosition, type, direction2, type2RelId + 1, true );
             assertEquals( type2RelId, previousRel );
+            assertEquals( 2, cache.getCount( relGroupCachePosition, type, direction2 ) );
         }
     }
 
@@ -94,26 +134,38 @@ public class RelationshipGroupCacheTest
         {
             long relId = 15;
             long relGroupCachePosition = cache.allocate( type, direction, relId );
-            long previousRel = cache.put( relGroupCachePosition, type, direction, relId + 1 );
+            long previousRel = cache.put( relGroupCachePosition, type, direction, relId + 1, true );
             assertEquals( relId, previousRel );
         }
         {
             long relId = 22;
             long relGroupCachePosition = cache.allocate( type, direction, relId );
-            long previousRel = cache.put( relGroupCachePosition, type, direction, relId + 1 );
+            long previousRel = cache.put( relGroupCachePosition, type, direction, relId + 1, true );
             assertEquals( relId, previousRel );
         }
     }
 
     @Test
-    public void shouldRelease() throws Exception
+    public void shouldVisitNodeOnce() throws Exception
     {
-        // given
+        // GIVEN
+        RelationshipGroupCache cache = new RelationshipGroupCache( 100, new CapturingRelationshipGroupIdAssigner() );
+        long index = cache.allocate( 0, Direction.OUTGOING, 0 );
+        cache.put( index, 1, Direction.OUTGOING, 10, true );
+        cache.put( index, 2, Direction.OUTGOING, 12, true );
 
+        // THEN
+        assertCorrectVisit( cache, index, 1, Direction.OUTGOING );
+        assertCorrectVisit( cache, index, 1, Direction.INCOMING );
+        assertCorrectVisit( cache, index, 2, Direction.OUTGOING );
+        assertCorrectVisit( cache, index, 2, Direction.INCOMING );
+    }
 
-        // when
-
-        // then
+    private void assertCorrectVisit( RelationshipGroupCache cache, long index, int type, Direction direction )
+    {
+        assertFalse( cache.checkAndSetVisited( index, type, direction ) );
+        assertTrue( cache.checkAndSetVisited( index, type, direction ) );
+        assertTrue( cache.checkAndSetVisited( index, type, direction ) );
     }
 
     private class CapturingRelationshipGroupIdAssigner implements IdSequence
