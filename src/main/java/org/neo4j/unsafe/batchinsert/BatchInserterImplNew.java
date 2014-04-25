@@ -221,6 +221,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
     }
 
+    // Forward linking
     public void importRelationships_prepareRecords( CSVDataBuffer buf ) throws BatchImportException
     {
         long firstNextRel, secondNextRel, firstNodeId, secondNodeId;
@@ -245,12 +246,12 @@ public class BatchInserterImplNew extends BatchInserterImpl
 
                 if ( firstNodeId == secondNodeId )
                 {
-                    firstNextRel = secondNextRel = doNodeLoopStuff( rel );
+                    firstNextRel = secondNextRel = doNodeLoopStuff( rel, true );
                 }
                 else
                 {
-                    firstNextRel = doNodeStuff( firstNodeId, rel );
-                    secondNextRel = doNodeStuff( secondNodeId, rel );
+                    firstNextRel = doNodeStuff( firstNodeId, rel, Direction.OUTGOING, true );
+                    secondNextRel = doNodeStuff( secondNodeId, rel, Direction.INCOMING, true );
                 }
 
                 assert firstNextRel != rel.getId();
@@ -265,12 +266,25 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
     }
 
-    private long doNodeLoopStuff( RelationshipRecord rel )
+    private long doNodeLoopStuff( RelationshipRecord rel, boolean forwardScan )
     {
         long nodeId = rel.getFirstNode();
         if ( nodeCache.nodeIsDense( nodeId ) )
         {   // dense
-            throw new UnsupportedOperationException( "We are lazy" );
+            long relGroupIndex = nodeCache.get( nodeId );
+            if ( relGroupIndex == -1 )
+            {
+                relGroupIndex = relationshipGroupCache.allocate( rel.getType(), Direction.BOTH, rel.getId() );
+                nodeCache.put( nodeId, relGroupIndex );
+                System.out.println( "dense loop " + nodeId + " --> " + relGroupIndex );
+                return -1;
+            }
+            else
+            {
+                System.out.println( "dense loop " + nodeId + " <-- " + relGroupIndex );
+                return relationshipGroupCache.put( relGroupIndex, rel.getType(), Direction.BOTH, rel.getId(),
+                        forwardScan );
+            }
         }
         else
         {   // sparse
@@ -280,20 +294,24 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
     }
 
-    private long doNodeStuff( long nodeId, RelationshipRecord rel )
+
+    private long doNodeStuff( long nodeId, RelationshipRecord rel, Direction direction, boolean forwardScan )
     {
         if ( nodeCache.nodeIsDense( nodeId ) )
         {   // This is a dense node
             long relGroupIndex = nodeCache.get( nodeId );
             if ( relGroupIndex == -1 )
             {
-                relGroupIndex = relationshipGroupCache.allocate( rel.getType(), Direction.OUTGOING, rel.getId() );
+                relGroupIndex = relationshipGroupCache.allocate( rel.getType(), direction, rel.getId() );
                 nodeCache.put( nodeId, relGroupIndex );
+                System.out.println( "dense node " + nodeId + " --> " + relGroupIndex );
                 return -1;
             }
             else
             {
-                return relationshipGroupCache.put( relGroupIndex, rel.getType(), Direction.OUTGOING, rel.getId(), true );
+                System.out.println( "dense node " + nodeId + " <-- " + relGroupIndex );
+                return relationshipGroupCache.put( relGroupIndex, rel.getType(), direction, rel.getId(),
+                        forwardScan );
             }
         }
         else
@@ -557,7 +575,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
         else
         {
-            nodeCache.cleanIds();
+            nodeCache.cleanIds( false );
+            System.out.println( "Cleaned IDs" );
         }
         long startLinkBack = prev = System.currentTimeMillis();
         for ( long id = maxRelId - 1; id >= 0; id-- )
@@ -572,38 +591,51 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 relId = relRecord.getId();
                 firstNode = relRecord.getFirstNode();
                 secondNode = relRecord.getSecondNode();
-                if ( relRecord.getFirstPrevRel() != nodeCache.get( firstNode ) ||
-                        relRecord.getSecondPrevRel() != nodeCache.get( secondNode ) )
-                {
-                    relRecord.setFirstPrevRel( nodeCache.get( firstNode ) );
-                    relRecord.setSecondPrevRel( nodeCache.get( secondNode ) );
 
-                    if ( firstNode == secondNode )
-                    {
-                        if ( !nodeCache.checkAndSetVisited( firstNode ) )
-                        {   // First relationship for this node
-                            relRecord.setFirstInFirstChain( true );
-                            relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
-                            relRecord.setFirstInSecondChain( true );
-                            relRecord.setSecondPrevRel( nodeCache.getCount( firstNode ) );
-                        }
+                long firstPrevRel, secondPrevRel;
+                if ( firstNode == secondNode )
+                {
+                    firstPrevRel = secondPrevRel = doNodeLoopStuff( relRecord, false );
+                    if ( !nodeCache.checkAndSetVisited( firstNode ) )
+                    {   // First relationship for this node
+                        relRecord.setFirstInFirstChain( true );
+                        relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
+                        relRecord.setFirstInSecondChain( true );
+                        relRecord.setSecondPrevRel( nodeCache.getCount( firstNode ) );
                     }
                     else
                     {
-                        if ( !nodeCache.checkAndSetVisited( firstNode ) )
-                        {   // First relationship for this node
-                            relRecord.setFirstInFirstChain( true );
-                            relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
-                        }
-                        if ( !nodeCache.checkAndSetVisited( secondNode ) )
-                        {   // First relationship for this node
-                            relRecord.setFirstInSecondChain( true );
-                            relRecord.setSecondPrevRel( nodeCache.getCount( secondNode ) );
-                        }
+                        relRecord.setFirstPrevRel( firstPrevRel );
+                        relRecord.setSecondPrevRel( secondPrevRel );
+                    }
+                }
+                else
+                {
+                    firstPrevRel = doNodeStuff( firstNode, relRecord, Direction.OUTGOING, false );
+                    if ( !nodeCache.checkAndSetVisited( firstNode ) )
+                    {   // First relationship for this node
+                        relRecord.setFirstInFirstChain( true );
+                        relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
+                    }
+                    else
+                    {
+                        relRecord.setFirstPrevRel( firstPrevRel );
                     }
 
-                    neoStore.getRelationshipStore().updateRecord( relRecord );
+                    secondPrevRel = doNodeStuff( secondNode, relRecord, Direction.INCOMING, false );
+                    if ( !nodeCache.checkAndSetVisited( secondNode ) )
+                    {   // First relationship for this node
+                        relRecord.setFirstInSecondChain( true );
+                        relRecord.setSecondPrevRel( nodeCache.getCount( secondNode ) );
+                    }
+                    else
+                    {
+                        relRecord.setSecondPrevRel( secondPrevRel );
+                    }
                 }
+
+                neoStore.getRelationshipStore().updateRecord( relRecord );
+
                 nodeCache.put( firstNode, relId );
                 nodeCache.put( secondNode, relId );
                 if ( id % 10000000 == 0 )
@@ -615,6 +647,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
+                e.printStackTrace();
                 System.out.println( "[Error in Relationship link back logic]" + e.getMessage() );
                 if ( errorCount++ > Constants.errorThreshold )
                 {

@@ -19,7 +19,7 @@ public class NodesCache
             nodeCache[i] = new long[Integer.MAX_VALUE];
         }
         size = nodeCount;
-        this.cleanIds();
+        this.cleanIds( true /*aöö*/ );
     }
 
     private int getCacheIndex( long id )
@@ -87,13 +87,18 @@ public class NodesCache
         return IdFieldManipulator.getCount( getField( key ) );
     }
 
-    public void cleanIds()
+    public void cleanIds( boolean all )
     {
         for ( int i = 0; i < numCache; i++ )
         {
             for ( int j = 0; j < nodeCache[i].length; j++ )
             {
-                nodeCache[i][j] = IdFieldManipulator.cleanId( nodeCache[i][j] );
+                if ( all ||
+                        // sparse node
+                        IdFieldManipulator.getCount( nodeCache[i][j] ) < denseNodeThreshold )
+                {
+                    nodeCache[i][j] = IdFieldManipulator.cleanId( nodeCache[i][j] );
+                }
             }
         }
     }
@@ -121,15 +126,6 @@ public class NodesCache
 
     public void calculateDenseNodeThreshold( double percent )
     {
-//        for ( long[] chard : nodeCache )
-//        {
-//            for ( long raw : chard )
-//            {
-//                long count = (raw & COUNT_BIT_MASK) >>> ID_BITS;
-//            }
-//        }
-        // TODO
-
         denseNodeThreshold = 15; // obviously hard coded and bad
 
         denseNodeCount = 0;

@@ -43,5 +43,7 @@ public class NodeDegreeAccumulator
         }
         while ( buffer.isMoreData() );
         nodeCache.calculateDenseNodeThreshold( 0.02d );
+
+        System.out.println( "dense node " + nodeCache.getDenseNodeCount() );
     }
 }

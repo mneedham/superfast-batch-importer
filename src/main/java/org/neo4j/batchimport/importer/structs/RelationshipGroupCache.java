@@ -14,8 +14,9 @@ public class RelationshipGroupCache
     private static final int INDEX_TYPE = 2;
     private static final int INDEX_OUT = 3;
     private static final int INDEX_IN = 4;
+    private static final int INDEX_LOOP = 5;
 
-    public static final int ARRAY_ROW_SIZE = 5;
+    public static final int ARRAY_ROW_SIZE = 6;
     public static final int EMPTY = -1;
     private final IdSequence relationshipGroupIdAssigner;
     private final long[] cache;
@@ -32,6 +33,7 @@ public class RelationshipGroupCache
 
     public long allocate( int type, Direction direction, long relId )
     {
+        System.out.println( "new group in allocate " + type );
         long logicalPosition = nextFreeId();
         initializeGroup( logicalPosition, type );
         setIdField( logicalPosition, inOrOutIndex( direction ), relId, true );
@@ -59,6 +61,7 @@ public class RelationshipGroupCache
         }
 
         long newPosition = nextFreeId();
+        System.out.println( "new group in put " + relGroupCachePosition + ", " + type );
         if ( empty( previousPosition ) )
         {   // We are at the start
             move( safeCastLongToInt( currentPosition ), safeCastLongToInt( newPosition ) );
@@ -111,6 +114,8 @@ public class RelationshipGroupCache
                 return INDEX_OUT;
             case INCOMING:
                 return INDEX_IN;
+            case BOTH:
+                return INDEX_LOOP;
             default:
                 throw new UnsupportedOperationException( direction.name() );
         }
@@ -120,8 +125,9 @@ public class RelationshipGroupCache
     {
         cache[physicalIndex( relGroupCachePosition, INDEX_TYPE )] = type;
         cache[physicalIndex( relGroupCachePosition, INDEX_ID )] = relationshipGroupIdAssigner.nextId();
-        cache[physicalIndex( relGroupCachePosition, INDEX_IN )] = IdFieldManipulator.emptyField();
         cache[physicalIndex( relGroupCachePosition, INDEX_OUT )] = IdFieldManipulator.emptyField();
+        cache[physicalIndex( relGroupCachePosition, INDEX_IN )] = IdFieldManipulator.emptyField();
+        cache[physicalIndex( relGroupCachePosition, INDEX_LOOP )] = IdFieldManipulator.emptyField();
     }
 
     private long setField( long position, int index, long newValue )
@@ -138,7 +144,10 @@ public class RelationshipGroupCache
         long field = cache[physicalIndex];
         long previousId = IdFieldManipulator.getId( field );
         field = IdFieldManipulator.setId( field, relId );
-        field = IdFieldManipulator.changeCount( field, trueForIncrement ? 1 : -1 );
+        if ( trueForIncrement )
+        {
+            field = IdFieldManipulator.changeCount( field, 1 );
+        }
         cache[physicalIndex] = field;
         return previousId;
     }
