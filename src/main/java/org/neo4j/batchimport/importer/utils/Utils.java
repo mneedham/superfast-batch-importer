@@ -1,5 +1,7 @@
 package org.neo4j.batchimport.importer.utils;
 
+import static java.lang.String.valueOf;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
@@ -44,7 +46,7 @@ public class Utils
     public static String getCurrentTimeStamp()
     {
         Timestamp ts = new Timestamp( System.currentTimeMillis() );
-        return ("[" + ts.toString() + "]");
+        return ("\n[" + ts.toString() + "]");
     }
 
     public static void arrayCopy( int[][] aSource, int[][] aDestination )
@@ -82,8 +84,13 @@ public class Utils
         }
         if ( writeRate )
         {
+            int memory = (int)Runtime.getRuntime().freeMemory() / Constants.mb;
+            String memoryMessage = Integer.toString( memory );
+            if (memory < 50)
+                memoryMessage += "  LOW MEMORY - Increase memory (using -Xms and -Xmx)";
+            
             return ("Property[" + highIds[0] + "] Node[" + highIds[1] + "] Relationship[" + highIds[2] + "] Label[" +
-                    highIds[3] + "] Disk[" + diskNew / Constants.mb + " mb] Rate[" + rate + " mb/sec]");
+                    highIds[3] + "] Disk[" + diskNew / Constants.mb + " mb, " + rate + " mb/sec] FreeMem[" + memoryMessage +" mb]");
         }
         return ("Property[" + highIds[0] + "] Node[" + highIds[1] + "] Relationship[" + highIds[2] + "] Label[" +
                 highIds[3] + "]");
@@ -190,6 +197,19 @@ public class Utils
             returnVal.append( ":" + tag );
         }
         return returnVal.toString();
+    }
+    
+    public static int safeCastLongToInt( long value )
+    {
+        if ( value > Integer.MAX_VALUE )
+        {
+            throw new IllegalArgumentException( valueOf( value ) );
+        }
+        return (int) value;
+    }
+    
+    public static void printStatusLine(String msg){
+        System.out.print( msg + '\r' );
     }
 
 }

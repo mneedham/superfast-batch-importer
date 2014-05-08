@@ -3,6 +3,7 @@ package org.neo4j.batchimport.importer.structs;
 import org.junit.Test;
 
 import org.neo4j.graphdb.Direction;
+import org.neo4j.kernel.api.Exceptions.BatchImportException;
 import org.neo4j.kernel.impl.nioneo.store.IdSequence;
 
 import static org.junit.Assert.assertEquals;
@@ -60,7 +61,7 @@ public class RelationshipGroupCacheTest
         testRelationshipsOfDifferentTypes( types );
     }
 
-    private void testRelationshipsOfDifferentTypes( int[] types )
+    private void testRelationshipsOfDifferentTypes( int[] types ) throws BatchImportException
     {
         long nodeCount = 1000;
         Direction direction = Direction.INCOMING;
@@ -161,7 +162,7 @@ public class RelationshipGroupCacheTest
         assertCorrectVisit( cache, index, 2, Direction.INCOMING );
     }
 
-    private void assertCorrectVisit( RelationshipGroupCache cache, long index, int type, Direction direction )
+    private void assertCorrectVisit( RelationshipGroupCache cache, long index, int type, Direction direction )throws BatchImportException
     {
         assertFalse( cache.checkAndSetVisited( index, type, direction ) );
         assertTrue( cache.checkAndSetVisited( index, type, direction ) );

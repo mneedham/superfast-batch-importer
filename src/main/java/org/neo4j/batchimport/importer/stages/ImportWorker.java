@@ -1,23 +1,24 @@
 package org.neo4j.batchimport.importer.stages;
 
 import org.neo4j.batchimport.importer.structs.CSVDataBuffer;
+import org.neo4j.batchimport.importer.structs.Constants;
 import org.neo4j.batchimport.importer.utils.Utils;
+import org.neo4j.kernel.api.Exceptions.BatchImportException;
 
 public class ImportWorker extends java.lang.Thread
 {
     public static ThreadLocal<ImportWorker> threadImportWorker = new ThreadLocal<>();
     private Exception excep;
     private String name = "";
-    private boolean isRunning = false;
     private Stage[] importWorkerMethods;
     private ReadFileData input;
     private int stageIndex = -1;
     private final int threadIndex;
-    private Stages stages;
+    private MultiStage stages;
     private boolean isPinned = false;
     private String threadCurrentMethod;
 
-    ImportWorker( ReadFileData inp, int threadIndex, Stages stages )
+    ImportWorker( ReadFileData inp, int threadIndex, MultiStage stages )
     {
         input = inp;
         this.threadIndex = threadIndex;
@@ -76,101 +77,134 @@ public class ImportWorker extends java.lang.Thread
 
     public void setCurrentMethod( String tag )
     {
+        // for debug info
         threadCurrentMethod = Utils.getCodeLocation( true, 3, tag );
     }
 
     public void setCurrentMethod()
     {
+        // for debug info
         threadCurrentMethod = Utils.getCodeLocation( true, 4 );
     }
 
     public String getCurrentMethod()
     {
+        // for debug info
         return threadCurrentMethod;
+    }
+
+    private void setThreadParams( CSVDataBuffer buffer )
+    {
+        if ( buffer == null )
+            return;
+        this.setCurrentMethod( " " + buffer.getBufSequenceId() );
+        stageIndex = buffer.getStageIndex();
+        if ( stages.getBufferQ().isSingleThreaded( stageIndex ) )
+        {
+            this.setPriority( Thread.NORM_PRIORITY + 1 );
+        }
+        else
+        {
+            this.setPriority( Thread.NORM_PRIORITY );
+        }
+        String methodName = importWorkerMethods[buffer.getStageIndex()].name();
+        this.name = Thread.currentThread().getName() + "ImportNode_" + methodName;
+    }
+
+    private CSVDataBuffer readData() throws InterruptedException, BatchImportException
+    {
+        CSVDataBuffer buffer = null;
+        while ( !isDone() && buffer == null )
+        {
+            try
+            {
+                buffer = stages.getBufferQ().getBuffer( this.stageIndex, this );
+            }
+            catch ( Exception e )
+            {
+                Utils.SystemOutPrintln( "Thread exception: in getBuffer:" + e.getMessage() );
+                throw new BatchImportException(e.getMessage());
+            }
+            if ( buffer == null )
+            {
+                Thread.sleep( Constants.READ_THREAD_WAIT );
+                continue;
+            }
+        }
+        return buffer;
+    }
+
+    public void processData( CSVDataBuffer buffer ) throws BatchImportException
+    {
+        if ( buffer == null )
+            return;
+        try
+        {
+            importWorkerMethods[buffer.getStageIndex()].execute( stages.getStageContext(), this.input, buffer );
+            stages.getStageRunData( buffer.getStageIndex(), threadIndex ).linesProcessed += buffer.getCurEntries();
+        }
+        catch ( Exception e )
+        {
+            this.excep = e;
+            e.printStackTrace();
+            Utils.SystemOutPrintln( "Invoke stage method failed:" + name + ":" + e.getMessage() + ":"
+                    + this.stages.getBufferQ().getThreadCount( stageIndex ) );
+            throw new BatchImportException(e.getMessage());
+        }
+    }
+
+    public void writeData( CSVDataBuffer buffer ) throws InterruptedException
+    {
+        if ( buffer == null )
+            return;
+        stages.getBufferQ().putBuffer( buffer );
+        this.setCurrentMethod();
+    }
+
+    private void lastBufferProcessing( CSVDataBuffer buffer ) throws InterruptedException
+    {
+        if ( buffer == null )
+            return;
+        // if last buffer and buffer has entries
+        if ( !buffer.isMoreData() && buffer.getCurEntries() > 0 )
+        {
+            stages.setStageComplete( buffer.getStageIndex(), true );
+            if ( buffer.getStageIndex() == 0 )
+            {
+                //wait till all the fellow threads in stage 0 (reader) to complete.
+                //wait count is to avoid indefinite wait.
+                int waitCount = 200;
+                while ( stages.getBufferQ().getThreadCount( 0 ) > 1 && waitCount-- > 0 )
+                {
+                    Thread.sleep( 100 );
+                }
+            }
+        }
     }
 
     public void run()
     {
         threadImportWorker.set( this );
-        stages.upThreadCount();
-        isRunning = true;
         Thread.currentThread().setName( name );
         CSVDataBuffer buffer = null;
-
-        while ( !isDone() )
+        try
         {
-            try
+            while ( !isDone() )
             {
-                try
-                {
-                    buffer = stages.getBufferQ().getBuffer( this.stageIndex, this );
-                }
-                catch ( Exception e )
-                {
-                    Utils.SystemOutPrintln( "Thread exception: in getBuffer" );
-                }
-                if ( buffer == null )
-                {
-                    Thread.sleep( 100 );
-                    continue;
-                }
-                this.setCurrentMethod( " " + buffer.getBufSequenceId() );
-                stageIndex = buffer.getStageIndex();
-                if ( stages.getBufferQ().isSingleThreaded( stageIndex ) )
-                {
-                    this.setPriority( Thread.NORM_PRIORITY + 1 );
-                }
-                else
-                {
-                    this.setPriority( Thread.NORM_PRIORITY );
-                }
-                String methodName = importWorkerMethods[buffer.getStageIndex()].name();
-                this.name = Thread.currentThread().getName() + "ImportNode_" + methodName;
-                if ( buffer != null )
-                {
-                    try
-                    {
-                        importWorkerMethods[buffer.getStageIndex()].execute( stages.getStageContext(), this.input,
-                                buffer );
-                    }
-                    catch ( Exception e )
-                    {
-                        this.excep = e;
-                        e.printStackTrace();
-                        Utils.SystemOutPrintln( "Invoke stage method failed:" + name + ":" + e.getMessage() + ":" +
-                                this.stages.getBufferQ().getThreadCount( stageIndex ) );
-                    }
-                    stages.getStageRunData( buffer.getStageIndex(), threadIndex ).linesProcessed += buffer
-                            .getCurEntries();
-                    if ( !buffer.isMoreData() && buffer.getCurEntries() > 0 )
-                    {
-                        stages.setStageComplete( buffer.getStageIndex(), true );
-
-                        if ( buffer.getStageIndex() == 0 )
-                        {
-                            //wait till all the fellow threads in stage 0 to complete.
-                            //wait count is to avoid indefinite wait.
-                            int waitCount = 200;
-                            while ( stages.getBufferQ().getThreadCount( 0 ) > 1 && waitCount-- > 0 )
-                            {
-                                Thread.sleep( 100 );
-                            }
-                        }
-                    }
-                    buffer = stages.getBufferQ().putBuffer( buffer );
-                    this.setCurrentMethod();
-                }
-            }
-            catch ( Exception e )
-            {
-                this.excep = e;
-                Utils.SystemOutPrintln( "Import worker:" + name + ":" + e.getMessage() );
-                isRunning = false;
-                //break;
+                buffer = readData();
+                setThreadParams( buffer );
+                processData( buffer );
+                lastBufferProcessing( buffer );
+                writeData( buffer );
             }
         }
-        isRunning = false;
-        stages.downThreadCount();
+        catch ( Exception e )
+        {
+            this.excep = e;
+            e.printStackTrace();
+            Utils.SystemOutPrintln( "Import worker:" + name + ":" + e.getMessage() );
+            throw new RuntimeException(e.getMessage());
+        }
     }
 
     public Exception getException()
@@ -178,7 +212,7 @@ public class ImportWorker extends java.lang.Thread
         return this.excep;
     }
 
-    public boolean isDone()
+    public boolean isDone() throws BatchImportException
     {
         if ( !stages.isComplete() )
         {
@@ -195,5 +229,4 @@ public class ImportWorker extends java.lang.Thread
         }
         return !stages.moreWork();
     }
-
 }

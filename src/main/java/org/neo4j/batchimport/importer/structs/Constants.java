@@ -28,10 +28,11 @@ public class Constants
     public static final int DATA_LIMIT = BINARY_FIELD_SIZE;
     public static final int BINARY_DATA_LIMIT = BINARY_FIELD_SIZE * 2;
     public static boolean debugData = false;
+    public static int READ_THREAD_WAIT = 200;
 
     public enum ImportStageState
     {
-        Uninitialized, Initialized, NodeImport, RelationshipImport, Exited
+        Uninitialized, Initialized, NodeImport, RelationshipPresacan, RelationshipImport, Exited
     }
 
     ;

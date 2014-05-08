@@ -1,86 +1,89 @@
 package org.neo4j.batchimport.importer.structs;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 
+import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.graphdb.Direction;
+import org.neo4j.kernel.api.Exceptions.BatchImportException;
 import org.neo4j.kernel.impl.nioneo.store.IdSequence;
+import org.neo4j.kernel.impl.nioneo.store.Record;
+import org.neo4j.kernel.impl.nioneo.store.RelationshipGroupRecord;
+import org.neo4j.kernel.impl.nioneo.store.RelationshipGroupStore;
 
 import static java.lang.String.valueOf;
 
 public class RelationshipGroupCache
 {
     private static final int INDEX_NEXT = 0;
-    private static final int INDEX_ID = 1;
-    private static final int INDEX_TYPE = 2;
-    private static final int INDEX_OUT = 3;
-    private static final int INDEX_IN = 4;
-    private static final int INDEX_LOOP = 5;
-
-    public static final int ARRAY_ROW_SIZE = 6;
-    public static final int EMPTY = -1;
+    private static final int INDEX_TYPE = 1;
+    private static final int INDEX_OUT = 2;
+    private static final int INDEX_IN = 3;
+    private static final int INDEX_LOOP = 4;
+    public static final int ARRAY_ROW_SIZE = 5;
     private final IdSequence relationshipGroupIdAssigner;
-    private final long[] cache;
+    private final ExtendableLongCache cache;
+    private final ExtendableLongCache relGroupId;
     private int nextFreeId = 0;
 
     public RelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner )
     {
         this.relationshipGroupIdAssigner = relationshipGroupIdAssigner;
-        cache = new long[(int) (denseNodeCount * ARRAY_ROW_SIZE)];
-        System.out.println( "Rel group cache array initialized to " + denseNodeCount + "*" + ARRAY_ROW_SIZE +
-                "=" + cache.length );
-        Arrays.fill( cache, EMPTY );
+        int increment = (Utils.safeCastLongToInt( denseNodeCount ) / 10) * ARRAY_ROW_SIZE;
+        cache = new ExtendableLongCache( increment );
+        relGroupId = new ExtendableLongCache( Utils.safeCastLongToInt( denseNodeCount ) );
+        System.out.println( "Rel group cache array initialized to " + denseNodeCount / 10 + "*" + ARRAY_ROW_SIZE + "="
+                + cache.size() + "with increment = " + increment );
+        cache.fill( ExtendableLongCache.EMPTY );
+        relGroupId.fill( ExtendableLongCache.EMPTY );
     }
 
-    public long allocate( int type, Direction direction, long relId )
+    public long allocate( int type, Direction direction, long relId ) throws BatchImportException
     {
-        System.out.println( "new group in allocate " + type );
+        //System.out.println( "new group in allocate " + type );
         long logicalPosition = nextFreeId();
-        initializeGroup( logicalPosition, type );
+        initializeGroup( logicalPosition, type, true );
         setIdField( logicalPosition, inOrOutIndex( direction ), relId, true );
         return logicalPosition;
     }
 
-    public long put( long relGroupCachePosition, int type, Direction direction, long relId,
-            boolean trueForIncrement )
+    public long put( long relGroupCachePosition, int type, Direction direction, long relId, boolean trueForIncrement )
+            throws BatchImportException
     {
         long currentPosition = relGroupCachePosition;
-        long previousPosition = EMPTY;
+        long previousPosition = ExtendableLongCache.EMPTY;
         while ( !empty( currentPosition ) )
         {
             long foundType = getField( currentPosition, INDEX_TYPE );
             if ( foundType == type )
-            {   // Found it
+            { // Found it
                 return setIdField( currentPosition, inOrOutIndex( direction ), relId, trueForIncrement );
             }
             else if ( foundType > type )
-            {   // We came too far, create room for it
+            { // We came too far, create room for it
                 break;
             }
             previousPosition = currentPosition;
             currentPosition = getField( currentPosition, INDEX_NEXT );
         }
-
         long newPosition = nextFreeId();
-        System.out.println( "new group in put " + relGroupCachePosition + ", " + type );
+        //System.out.println( "new group in put " + relGroupCachePosition + ", " + type );
         if ( empty( previousPosition ) )
-        {   // We are at the start
+        { // We are at the start
             move( safeCastLongToInt( currentPosition ), safeCastLongToInt( newPosition ) );
             long swap = newPosition;
             newPosition = currentPosition;
             currentPosition = swap;
         }
-
-        initializeGroup( newPosition, type );
+        initializeGroup( newPosition, type, false );
         if ( !empty( currentPosition ) )
-        {   // We are NOT at the end
+        { // We are NOT at the end
             setField( newPosition, INDEX_NEXT, currentPosition );
         }
-
         if ( !empty( previousPosition ) )
-        {   // We are NOT at the start
+        { // We are NOT at the start
             setField( previousPosition, INDEX_NEXT, newPosition );
         }
-
         return setIdField( newPosition, inOrOutIndex( direction ), relId, trueForIncrement );
     }
 
@@ -95,10 +98,10 @@ public class RelationshipGroupCache
 
     private void move( int from, int to )
     {
-        int physicalFrom = physicalIndex( from, 0 );
-        int physicalTo = physicalIndex( to, 0 );
-        System.arraycopy( cache, physicalFrom, cache, physicalTo, ARRAY_ROW_SIZE );
-        Arrays.fill( cache, physicalFrom, physicalFrom+ARRAY_ROW_SIZE, EMPTY );
+        long physicalFrom = physicalIndex( from, 0 );
+        long physicalTo = physicalIndex( to, 0 );
+        cache.copy( physicalFrom, physicalTo, ARRAY_ROW_SIZE );
+        cache.fill( physicalFrom, physicalFrom + ARRAY_ROW_SIZE, ExtendableLongCache.EMPTY );
     }
 
     private int nextFreeId()
@@ -110,109 +113,110 @@ public class RelationshipGroupCache
     {
         switch ( direction )
         {
-            case OUTGOING:
-                return INDEX_OUT;
-            case INCOMING:
-                return INDEX_IN;
-            case BOTH:
-                return INDEX_LOOP;
-            default:
-                throw new UnsupportedOperationException( direction.name() );
+        case OUTGOING:
+            return INDEX_OUT;
+        case INCOMING:
+            return INDEX_IN;
+        case BOTH:
+            return INDEX_LOOP;
+        default:
+            throw new UnsupportedOperationException( direction.name() );
         }
     }
 
-    private void initializeGroup( long relGroupCachePosition, int type )
+    private void initializeGroup( long relGroupCachePosition, int type, boolean allocateRelGroupId )
     {
-        cache[physicalIndex( relGroupCachePosition, INDEX_TYPE )] = type;
-        cache[physicalIndex( relGroupCachePosition, INDEX_ID )] = relationshipGroupIdAssigner.nextId();
-        cache[physicalIndex( relGroupCachePosition, INDEX_OUT )] = IdFieldManipulator.emptyField();
-        cache[physicalIndex( relGroupCachePosition, INDEX_IN )] = IdFieldManipulator.emptyField();
-        cache[physicalIndex( relGroupCachePosition, INDEX_LOOP )] = IdFieldManipulator.emptyField();
+        cache.put( physicalIndex( relGroupCachePosition, INDEX_TYPE ), (long) type );
+        cache.put( physicalIndex( relGroupCachePosition, INDEX_OUT ), IdFieldManipulator.emptyField() );
+        cache.put( physicalIndex( relGroupCachePosition, INDEX_IN ), IdFieldManipulator.emptyField() );
+        cache.put( physicalIndex( relGroupCachePosition, INDEX_LOOP ), IdFieldManipulator.emptyField() );
+        if ( allocateRelGroupId )
+            relGroupId.put( relGroupCachePosition, relationshipGroupIdAssigner.nextId() );
     }
 
-    private long setField( long position, int index, long newValue )
+    private long setField( long position, int index, long newValue ) throws BatchImportException
     {
-        int physicalIndex = physicalIndex( position, index );
-        long previousValue = cache[physicalIndex];
-        cache[physicalIndex] = newValue;
+        long physicalIndex = physicalIndex( position, index );
+        long previousValue = cache.get( physicalIndex );
+        cache.put( physicalIndex, newValue );
         return previousValue;
     }
 
     private long setIdField( long position, int index, long relId, boolean trueForIncrement )
+            throws BatchImportException
     {
-        int physicalIndex = physicalIndex( position, index );
-        long field = cache[physicalIndex];
+        long physicalIndex = physicalIndex( position, index );
+        long field = cache.get( physicalIndex );
         long previousId = IdFieldManipulator.getId( field );
         field = IdFieldManipulator.setId( field, relId );
         if ( trueForIncrement )
         {
             field = IdFieldManipulator.changeCount( field, 1 );
         }
-        cache[physicalIndex] = field;
+        cache.put( physicalIndex, field );
         return previousId;
     }
 
-    private long getField( long relGroupCachePosition, int index )
+    private long getField( long relGroupCachePosition, int index ) throws BatchImportException
     {
-        int physicalIndex = physicalIndex( relGroupCachePosition, index );
-        return cache[physicalIndex];
+        long physicalIndex = physicalIndex( relGroupCachePosition, index );
+        return cache.get( physicalIndex );
     }
 
-    private int physicalIndex( long relGroupCachePosition, int index )
+    private long physicalIndex( long relGroupCachePosition, int index )
     {
-        return (int) ((relGroupCachePosition * ARRAY_ROW_SIZE) + index);
+        return ((relGroupCachePosition * ARRAY_ROW_SIZE) + index);
     }
 
     private boolean empty( long value )
     {
-        return value == EMPTY;
+        return value == ExtendableLongCache.EMPTY;
     }
 
     /**
      * @return relationship group id of the first group for this node.
      */
-    public long getFirstRelGroupId( long relGroupIndex )
+    public long getFirstRelGroupId( long relGroupIndex ) throws BatchImportException
     {
-        return getField( relGroupIndex, INDEX_ID );
+        return relGroupId.get( relGroupIndex );
     }
 
-    public int getCount( long relGroupIndex, int type, Direction direction )
+    public int getCount( long relGroupIndex, int type, Direction direction ) throws BatchImportException
     {
         long groupIndexForType = findGroupIndexForType( relGroupIndex, type );
-        if ( groupIndexForType == EMPTY )
+        if ( groupIndexForType == ExtendableLongCache.EMPTY )
         {
             throw new IllegalStateException( "type " + type + " not found for " + relGroupIndex );
         }
         return IdFieldManipulator.getCount( getField( groupIndexForType, inOrOutIndex( direction ) ) );
     }
 
-    private long findGroupIndexForType( long relGroupIndex, int type )
+    private long findGroupIndexForType( long relGroupIndex, int type ) throws BatchImportException
     {
         long currentPosition = relGroupIndex;
         while ( !empty( currentPosition ) )
         {
             long foundType = getField( currentPosition, INDEX_TYPE );
             if ( foundType == type )
-            {   // Found it
+            { // Found it
                 return currentPosition;
             }
             else if ( foundType > type )
-            {   // We came too far, create room for it
+            { // We came too far, create room for it
                 break;
             }
             currentPosition = getField( currentPosition, INDEX_NEXT );
         }
-        return EMPTY;
+        return ExtendableLongCache.EMPTY;
     }
 
-    public boolean checkAndSetVisited( long index, int type, Direction direction )
+    public boolean checkAndSetVisited( long index, int type, Direction direction ) throws BatchImportException
     {
         long groupIndexForType = findGroupIndexForType( index, type );
-        if ( groupIndexForType == EMPTY )
+        if ( groupIndexForType == ExtendableLongCache.EMPTY )
         {
             throw new IllegalStateException( "type " + type + " not found for " + index );
         }
-
         int directionIndex = inOrOutIndex( direction );
         long field = getField( groupIndexForType, directionIndex );
         boolean visited = IdFieldManipulator.isVisited( field );
@@ -222,5 +226,39 @@ public class RelationshipGroupCache
         }
         setField( groupIndexForType, directionIndex, IdFieldManipulator.setVisited( field ) );
         return false;
+    }
+
+    public RelationshipGroupRecord[] createRelationshipGroupRecordChain( RelationshipGroupStore relGroupStore,
+            long relGroupIndex, long nodeId ) throws BatchImportException
+    {
+        ArrayList<RelationshipGroupRecord> relGrpRecords = new ArrayList<RelationshipGroupRecord>();
+        RelationshipGroupRecord previous = null;
+        while ( true )
+        {
+            int type = Utils.safeCastLongToInt( getField( relGroupIndex, INDEX_TYPE ) );
+            RelationshipGroupRecord record = new RelationshipGroupRecord( relGroupStore.nextId(), type );
+            relGrpRecords.add( record );
+            record.setCreated();
+            record.setInUse( true );
+            record.setOwningNode( nodeId );
+            record.setFirstIn( getField( relGroupIndex, INDEX_IN ) );
+            record.setFirstOut( getField( relGroupIndex, INDEX_OUT ) );
+            record.setFirstLoop( getField( relGroupIndex, INDEX_LOOP ) );
+            long nextIndex = getField( relGroupIndex, INDEX_NEXT );
+            if ( previous != null )
+            {
+                previous.setNext( record.getId() );
+                record.setPrev( previous.getId() );
+            } else
+                record.setPrev( Record.NO_NEXT_RELATIONSHIP.intValue() );
+            if ( empty( nextIndex ) )
+            {
+                record.setNext( Record.NO_NEXT_RELATIONSHIP.intValue() );
+                break;
+            }
+            previous = record;
+            relGroupIndex = nextIndex;
+        }
+        return relGrpRecords.toArray(new RelationshipGroupRecord[0]);
     }
 }

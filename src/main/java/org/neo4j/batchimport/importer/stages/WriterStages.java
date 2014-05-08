@@ -14,10 +14,10 @@ public class WriterStages
     protected WriterWorker[] writerWorker = null;
     protected WriterStage[] writerMethods = null;
     protected RunData[] writerRunData;
-    protected Stages stages;
+    protected MultiStage stages;
     protected BatchInserterImplNew db;
 
-    public WriterStages( Stages stages, BatchInserterImplNew db )
+    public WriterStages( MultiStage stages, BatchInserterImplNew db )
     {
         this.stages = stages;
         this.db = db;

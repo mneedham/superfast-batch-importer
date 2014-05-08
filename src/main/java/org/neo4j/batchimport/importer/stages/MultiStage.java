@@ -10,20 +10,20 @@ import org.neo4j.batchimport.importer.structs.DataBufferBlockingQ;
 import org.neo4j.batchimport.importer.structs.DiskRecordsCache;
 import org.neo4j.batchimport.importer.structs.RunData;
 import org.neo4j.batchimport.importer.utils.Utils;
+import org.neo4j.kernel.api.Exceptions.BatchImportException;
 import org.neo4j.unsafe.batchinsert.BatchInserterImpl;
 
 import static java.lang.String.format;
 
-public class Stages
+public class MultiStage
 {
     private ImportStageState stageState = ImportStageState.Uninitialized;
     private DataBufferBlockingQ<CSVDataBuffer> bufferQ;
     private int threadCount;
-    private int activeThreadCount = 0;
     private RunData[][] stageRunData;
     private boolean[] stageComplete;
     private int numStages;
-    private ImportWorker[] importWorkers;
+    private ImportWorker[] importWorkers = null;
     private Stage[] importStageMethods;
     private CSVDataBuffer[] bufArray;
     private boolean moreWork = true;
@@ -31,10 +31,10 @@ public class Stages
     private long startImport = System.currentTimeMillis();
     protected CountDownLatch startStagesSyncPoint = new CountDownLatch( 1 );
     private StageContext stageContext;
-    private int currentMode = -1;
     private WriterStages writerStages;
+    private String threadException = null;
 
-    public Stages( StageContext stageContext )
+    public MultiStage( StageContext stageContext )
     {
         this.stageContext = stageContext;
     }
@@ -43,13 +43,24 @@ public class Stages
     {
         return stageState;
     }
+    
+    Thread.UncaughtExceptionHandler uncaughtException = new Thread.UncaughtExceptionHandler() {
+        public void uncaughtException(Thread th, Throwable ex) {
+            threadException = ex.getMessage();
+            System.out.println("Uncaught exception: " + ex);
+            stopWorkers();
+            stop();
+        }
+    };
+    
 
-    public void init( int mode, Stage... methods )
+    public void init( Constants.ImportStageState mode, Stage... methods )
     {
-        currentMode = mode;
+        stageState = mode;
         this.numStages = methods.length;
         threadCount = Math.max( Runtime.getRuntime().availableProcessors(), numStages );
-        importWorkers = new ImportWorker[threadCount];
+        if ( importWorkers == null )
+            importWorkers = new ImportWorker[threadCount];
         stageRunData = new RunData[numStages][threadCount];
         for ( int i = 0; i < numStages; i++ )
         {
@@ -73,7 +84,6 @@ public class Stages
                 importWorkers[i].setImportWorkers( importStageMethods );
             }
         }
-        stageState = ImportStageState.Initialized;
     }
 
     public void setSingleThreaded( boolean... type )
@@ -112,14 +122,6 @@ public class Stages
         assignThreadsToStages();
         startStagesSyncPoint.countDown();
         startStagesSyncPoint = new CountDownLatch( 1 );
-        if ( currentMode == Constants.NODE )
-        {
-            stageState = ImportStageState.NodeImport;
-        }
-        else if ( currentMode == Constants.RELATIONSHIP )
-        {
-            stageState = ImportStageState.RelationshipImport;
-        }
     }
 
     private void startWorkers()
@@ -130,6 +132,7 @@ public class Stages
             {
                 importWorkers[i] = new ImportWorker( currentInput, i, this );
                 importWorkers[i].setImportWorkers( importStageMethods );
+                importWorkers[i].setUncaughtExceptionHandler(uncaughtException);
                 importWorkers[i].start();
                 try
                 {
@@ -147,6 +150,17 @@ public class Stages
             }
         }
     }
+    
+    private void stopWorkers()
+    {
+        for ( int i = 0; i < threadCount; i++ )
+        {
+            if ( importWorkers[i] != null && importWorkers[i].isAlive())
+            {
+                importWorkers[i].interrupt();
+            }
+        }
+    }
 
     private void assignThreadsToStages()
     {
@@ -158,11 +172,19 @@ public class Stages
             threadIndex++;
         }
         //remaining up to maxThreads/2, pin to multithreaded stages
-        for (; threadIndex < this.threadCount / 2; stageIndex++ )
+        for ( ; threadIndex < this.threadCount / 2; stageIndex++ )
         {
             if ( !bufferQ.isSingleThreaded( stageIndex % numStages ) )
             {
                 importWorkers[threadIndex].setStageIndex( stageIndex % numStages, true );
+                threadIndex++;
+            }
+        }
+        for ( ; threadIndex < this.threadCount; stageIndex++ )
+        {
+            if ( !bufferQ.isSingleThreaded( stageIndex % numStages ) )
+            {
+                importWorkers[threadIndex].setStageIndex( stageIndex % numStages, false );
                 threadIndex++;
             }
         }
@@ -178,16 +200,6 @@ public class Stages
     public DataBufferBlockingQ<CSVDataBuffer> getBufferQ()
     {
         return bufferQ;
-    }
-
-    public synchronized int upThreadCount()
-    {
-        return (activeThreadCount++);
-    }
-
-    public synchronized int downThreadCount()
-    {
-        return (--activeThreadCount);
     }
 
     public RunData getStageRunData( int index1, int index2 )
@@ -218,8 +230,7 @@ public class Stages
         CSVDataBuffer[] bufferArray = new CSVDataBuffer[size];
         for ( int i = 0; i < size; i++ )
         {
-            CSVDataBuffer buf = new CSVDataBuffer( Constants.BUFFER_ENTRIES,
-                    Constants.BUFFER_SIZE_BYTES, diskCache, 4 );
+            CSVDataBuffer buf = new CSVDataBuffer( Constants.BUFFER_ENTRIES, Constants.BUFFER_SIZE_BYTES, diskCache, 4 );
             bufferArray[i] = buf;
         }
         return bufferArray;
@@ -242,8 +253,10 @@ public class Stages
         }
     }
 
-    public boolean isComplete()
+    public boolean isComplete() throws BatchImportException
     {
+        if (threadException != null)
+            throw new BatchImportException(threadException);
         for ( boolean status : stageComplete )
         {
             if ( !status )
@@ -254,7 +267,7 @@ public class Stages
         return true;
     }
 
-    public void pollResults( BatchInserterImpl batchInserter )
+    public void pollResults( BatchInserterImpl batchInserter, String progressHeader ) throws Exception
     {
         long startTime = System.currentTimeMillis();
         long waitCount = 0, billion = 1;
@@ -273,12 +286,11 @@ public class Stages
                 }
                 if ( waitCount % Constants.progressPollInterval == 0 && batchInserter.getNeoStore() != null )
                 {
-                    System.out.print( "In progress: [" + waitCount / 1000 + "] " + Utils.getMaxIds( batchInserter
-                            .getNeoStore(), true ) + '\r' );
+                    System.out.print( progressHeader+": [" + waitCount / 1000 + "] "
+                            + Utils.getMaxIds( batchInserter.getNeoStore(), true ) + '\r' );
                 }
-
-                if ( batchInserter.getNeoStore() != null && Utils.getTotalIds( batchInserter.getNeoStore() ) >
-                        billion * 1000000000 )
+                if ( batchInserter.getNeoStore() != null
+                        && Utils.getTotalIds( batchInserter.getNeoStore() ) > billion * 1000000000 )
                 {
                     // for strange reason, process abort for lack of memory.
                     // This is a forced gc every billion elements to avoid out-of-memory failures.
@@ -293,7 +305,7 @@ public class Stages
             catch ( Exception e )
             {
                 Utils.SystemOutPrintln( e.getMessage() + " Poll thread exception" );
-                break;
+                throw e;
             }
         }
     }
@@ -357,7 +369,7 @@ public class Stages
         str.append( "Writers:" );
         for ( int i = 0; i < writerStages.numWriters; i++ )
         {
-            str.append( format( "[%s:%d:%d]",                    Constants.RECORD_TYPE_NAME[writerStages.writerWorker[i].workerType],
+            str.append( format( "[%s:%d:%d]", Constants.RECORD_TYPE_NAME[writerStages.writerWorker[i].workerType],
                     writerStages.diskBlockingQ.getLength( writerStages.writerWorker[i].workerType ),
                     writerStages.getRunData( i ).linesProcessed ) );
         }
@@ -367,5 +379,9 @@ public class Stages
         {
             System.out.println( "\t" + "MaxIds:" + Utils.getMaxIds( batchInserter.getNeoStore() ) );
         }
+    }
+    
+    public String getException(){
+        return threadException;
     }
 }

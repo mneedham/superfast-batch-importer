@@ -1,5 +1,7 @@
 package org.neo4j.unsafe.batchinsert;
 
+import java.io.BufferedReader;
+import java.io.Reader;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -7,6 +9,7 @@ import java.util.Map.Entry;
 import org.neo4j.batchimport.importer.RelType;
 import org.neo4j.batchimport.importer.stages.ImportWorker;
 import org.neo4j.batchimport.importer.stages.ReadFileData;
+import org.neo4j.batchimport.importer.stages.StageContext;
 import org.neo4j.batchimport.importer.structs.CSVDataBuffer;
 import org.neo4j.batchimport.importer.structs.Constants;
 import org.neo4j.batchimport.importer.structs.DiskBlockingQ;
@@ -31,9 +34,10 @@ import org.neo4j.kernel.impl.nioneo.store.PropertyRecord;
 import org.neo4j.kernel.impl.nioneo.store.PropertyStore;
 import org.neo4j.kernel.impl.nioneo.store.PropertyType;
 import org.neo4j.kernel.impl.nioneo.store.Record;
+import org.neo4j.kernel.impl.nioneo.store.RelationshipGroupRecord;
+import org.neo4j.kernel.impl.nioneo.store.RelationshipGroupStore;
 import org.neo4j.kernel.impl.nioneo.store.RelationshipRecord;
 import org.neo4j.kernel.impl.nioneo.store.RelationshipStore;
-
 
 public class BatchInserterImplNew extends BatchInserterImpl
 {
@@ -44,17 +48,21 @@ public class BatchInserterImplNew extends BatchInserterImpl
     private RelationshipGroupCache relationshipGroupCache = null;
     private NeoStore neoStore = null;
 
-    public BatchInserterImplNew( String storeDir,
-                                 Map<String, String> stringParams )
+    public BatchInserterImplNew( String storeDir, Map<String, String> stringParams )
     {
-        super( storeDir, new DefaultFileSystemAbstraction(), stringParams,
-                (Iterable) Service.load( KernelExtensionFactory.class ) );
+        super( storeDir, new DefaultFileSystemAbstraction(), stringParams, (Iterable) Service
+                .load( KernelExtensionFactory.class ) );
         neoStore = this.getNeoStore();
     }
 
     public void setNodeCache( NodesCache nodesCache )
     {
         this.nodeCache = nodesCache;
+    }
+
+    public NodesCache getNodeCache()
+    {
+        return nodeCache;
     }
 
     public void setRelationshipGroupCache( RelationshipGroupCache relationshipGroupCache )
@@ -145,8 +153,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
             for ( int index = 0; index < buf.getCurEntries(); index++ )
             {
                 NodeRecord nodeRecord = new NodeRecord( buf.getId( index ), false,
-                        Record.NO_NEXT_RELATIONSHIP.intValue(),
-                        Record.NO_NEXT_PROPERTY.intValue() );
+                        Record.NO_NEXT_RELATIONSHIP.intValue(), Record.NO_NEXT_PROPERTY.intValue() );
                 nodeRecord.setInUse( true );
                 nodeRecord.setCreated();
                 this.setNodeLabels( nodeRecord, labelsFor( dataInput.getTypeLabels( buf, index ) ) );
@@ -166,7 +173,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
         {
             recsNode.setLastBuffer( !buf.isMoreData() );
         }
-
         DiskRecordsBuffer recsProps = buf.removeDiskRecords( Constants.PROPERTY );
         if ( !buf.isMoreData() )
         {
@@ -186,7 +192,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
 
     public void importRelationships_createRelationshipRecords( CSVDataBuffer buf ) throws BatchImportException
     {
-        final RelType relType = new RelType();
         long id = 0;
         if ( buf.getDiskRecords( Constants.RELATIONSHIP ).getMaxEntries() < buf.getMaxEntries() )
         {
@@ -198,16 +203,9 @@ public class BatchInserterImplNew extends BatchInserterImpl
             {
                 id = getRelationshipStore().nextId();
                 buf.setId( index, id );
-                final RelType type = relType.update( buf.getString( index, 2 ) );
-                int typeId = this.relationshipTypeTokens.idOf( type.name() );
-                if ( typeId == -1 )
-                {
-                    typeId = this.createNewRelationshipType( type.name() );
-                }
-                RelationshipRecord record = new RelationshipRecord( id,
-                        buf.getLong( index, 0 ),
-                        buf.getLong( index, 1 ),
-                        typeId );
+                int typeId = createRelTypeId( buf.getString( index, 2 ) );
+                RelationshipRecord record = new RelationshipRecord( id, buf.getLong( index, 0 ),
+                        buf.getLong( index, 1 ), typeId );
                 record.setInUse( true );
                 record.setCreated();
                 record.setFirstInFirstChain( false );
@@ -216,7 +214,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
             catch ( Exception e )
             {
-                throw new BatchImportException( "[importRelationships_createRelationshipRecords failed]" + e.getMessage() );
+                throw new BatchImportException( "[importRelationships_createRelationshipRecords failed]"
+                        + e.getMessage() );
             }
         }
     }
@@ -226,7 +225,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
     {
         long firstNextRel, secondNextRel, firstNodeId, secondNodeId;
         RelationshipRecord rel;
-
         setPropIds( buf, true );
         for ( int index = 0; index < buf.getCurEntries(); index++ )
         {
@@ -243,7 +241,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 }
                 firstNodeId = rel.getFirstNode();
                 secondNodeId = rel.getSecondNode();
-
                 if ( firstNodeId == secondNodeId )
                 {
                     firstNextRel = secondNextRel = doNodeLoopStuff( rel, true );
@@ -253,7 +250,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
                     firstNextRel = doNodeStuff( firstNodeId, rel, Direction.OUTGOING, true );
                     secondNextRel = doNodeStuff( secondNodeId, rel, Direction.INCOMING, true );
                 }
-
                 assert firstNextRel != rel.getId();
                 assert secondNextRel != rel.getId();
                 rel.setFirstNextRel( firstNextRel );
@@ -266,11 +262,11 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
     }
 
-    private long doNodeLoopStuff( RelationshipRecord rel, boolean forwardScan )
+    private long doNodeLoopStuff( RelationshipRecord rel, boolean forwardScan ) throws BatchImportException
     {
         long nodeId = rel.getFirstNode();
         if ( nodeCache.nodeIsDense( nodeId ) )
-        {   // dense
+        { // dense
             long relGroupIndex = nodeCache.get( nodeId );
             if ( relGroupIndex == -1 )
             {
@@ -287,35 +283,36 @@ public class BatchInserterImplNew extends BatchInserterImpl
             }
         }
         else
-        {   // sparse
+        { // sparse
             long result = nodeCache.get( nodeId );
             nodeCache.put( nodeId, rel.getId() );
             return result;
         }
     }
 
-
     private long doNodeStuff( long nodeId, RelationshipRecord rel, Direction direction, boolean forwardScan )
+            throws BatchImportException
     {
         if ( nodeCache.nodeIsDense( nodeId ) )
-        {   // This is a dense node
+        { // This is a dense node
             long relGroupIndex = nodeCache.get( nodeId );
             if ( relGroupIndex == -1 )
             {
                 relGroupIndex = relationshipGroupCache.allocate( rel.getType(), direction, rel.getId() );
                 nodeCache.put( nodeId, relGroupIndex );
-                System.out.println( "dense node " + nodeId + " --> " + relGroupIndex );
+                if ( nodeId == 277314 )
+                    System.out.println( "RelgroupId=" + nodeCache.get( nodeId ) );
+                //System.out.println( "dense node " + nodeId + " --> " + relGroupIndex );
                 return -1;
             }
             else
             {
-                System.out.println( "dense node " + nodeId + " <-- " + relGroupIndex );
-                return relationshipGroupCache.put( relGroupIndex, rel.getType(), direction, rel.getId(),
-                        forwardScan );
+                //System.out.println( "dense node " + nodeId + " <-- " + relGroupIndex );
+                return relationshipGroupCache.put( relGroupIndex, rel.getType(), direction, rel.getId(), forwardScan );
             }
         }
         else
-        {   // This is a sparse node
+        { // This is a sparse node
             long result = nodeCache.get( nodeId );
             nodeCache.put( nodeId, rel.getId() );
             return result;
@@ -333,14 +330,12 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 recs.setLastBuffer( !buf.isMoreData() );
             }
             diskBlockingQ.putBuffer( Constants.NODE, recs );
-
             recs = buf.removeDiskRecords( Constants.PROPERTY );
             if ( !buf.isMoreData() )
             {
                 recs.setLastBuffer( !buf.isMoreData() );
             }
             diskBlockingQ.putBuffer( Constants.PROPERTY, recs );
-
             recs = buf.removeDiskRecords( Constants.RELATIONSHIP );
             if ( !buf.isMoreData() )
             {
@@ -350,7 +345,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Adding to Property/Node/Relation Q failed][" + buf.getBufSequenceId()  +"]", e );
+            throw new BatchImportException( "[Adding to Property/Node/Relation Q failed][" + buf.getBufSequenceId()
+                    + "]", e );
         }
     }
 
@@ -414,7 +410,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
             {
                 continue;
             }
-
             long id = propStore.nextId();
             ;
             PropertyRecord currentRecord = new PropertyRecord( id );
@@ -444,14 +439,13 @@ public class BatchInserterImplNew extends BatchInserterImpl
             long propId = ((PropertyRecord) buf.getDiskRecords( Constants.PROPERTY ).getRecord( index, 0 )).getId();
             if ( relation )
             {
-                ((RelationshipRecord) buf.getDiskRecords( Constants.RELATIONSHIP ).getRecord( index,
-                        0 )).setNextProp( propId );
+                ((RelationshipRecord) buf.getDiskRecords( Constants.RELATIONSHIP ).getRecord( index, 0 ))
+                        .setNextProp( propId );
             }
             else
             {
                 ((NodeRecord) buf.getDiskRecords( Constants.NODE ).getRecord( index, 0 )).setNextProp( propId );
             }
-
         }
     }
 
@@ -526,7 +520,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 if ( nodeCache.nodeIsDense( id ) )
                 {
                     nodeRec.setDense( true );
-                    nodeRec.setNextRel( relationshipGroupCache.getFirstRelGroupId( nodeCache.get( id ) ) );
+                    //nodeRec.setNextRel( relationshipGroupCache.getFirstRelGroupId( nodeCache.get( id ) ) );
+                    nodeRec.setNextRel( writeRelationshipGroupRecords( id ) );
                 }
                 else
                 {
@@ -539,8 +534,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 System.out.println( "[writeNodeNextRel failed]" + e.getMessage() );
                 if ( errorCount++ > Constants.errorThreshold )
                 {
-                    throw new BatchImportException( "[writeNodeNextRel failed]{Errors exceeded error threshold -" +
-                            errorCount + "]", e );
+                    throw new BatchImportException( "[writeNodeNextRel failed]{Errors exceeded error threshold -"
+                            + errorCount + "]", e );
                 }
             }
         }
@@ -586,18 +581,18 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 relRecord = neoStore.getRelationshipStore().getRecord( id );
                 if ( !relRecord.inUse() )
                 {
-                    System.out.println( "Relationship [" + relRecord.getId() + " [" + relRecord.toString() + "] not in use" );
+                    System.out.println( "Relationship [" + relRecord.getId() + " [" + relRecord.toString()
+                            + "] not in use" );
                 }
                 relId = relRecord.getId();
                 firstNode = relRecord.getFirstNode();
                 secondNode = relRecord.getSecondNode();
-
                 long firstPrevRel, secondPrevRel;
                 if ( firstNode == secondNode )
                 {
                     firstPrevRel = secondPrevRel = doNodeLoopStuff( relRecord, false );
                     if ( !nodeCache.checkAndSetVisited( firstNode ) )
-                    {   // First relationship for this node
+                    { // First relationship for this node
                         relRecord.setFirstInFirstChain( true );
                         relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
                         relRecord.setFirstInSecondChain( true );
@@ -613,7 +608,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 {
                     firstPrevRel = doNodeStuff( firstNode, relRecord, Direction.OUTGOING, false );
                     if ( !nodeCache.checkAndSetVisited( firstNode ) )
-                    {   // First relationship for this node
+                    { // First relationship for this node
                         relRecord.setFirstInFirstChain( true );
                         relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
                     }
@@ -621,10 +616,9 @@ public class BatchInserterImplNew extends BatchInserterImpl
                     {
                         relRecord.setFirstPrevRel( firstPrevRel );
                     }
-
                     secondPrevRel = doNodeStuff( secondNode, relRecord, Direction.INCOMING, false );
                     if ( !nodeCache.checkAndSetVisited( secondNode ) )
-                    {   // First relationship for this node
+                    { // First relationship for this node
                         relRecord.setFirstInSecondChain( true );
                         relRecord.setSecondPrevRel( nodeCache.getCount( secondNode ) );
                     }
@@ -633,15 +627,16 @@ public class BatchInserterImplNew extends BatchInserterImpl
                         relRecord.setSecondPrevRel( secondPrevRel );
                     }
                 }
-
                 neoStore.getRelationshipStore().updateRecord( relRecord );
-
-                nodeCache.put( firstNode, relId );
-                nodeCache.put( secondNode, relId );
+                if ( !nodeCache.nodeIsDense( firstNode ) )
+                    nodeCache.put( firstNode, relId );
+                if ( !nodeCache.nodeIsDense( secondNode ) )
+                    nodeCache.put( secondNode, relId );
                 if ( id % 10000000 == 0 )
                 {
                     current = System.currentTimeMillis();
-                    System.out.println( "\tCompleted Relationship back linking " + (maxRelId - id) + " links in " + (current - startLinkBack) + " ms [" + (current - prev) + "]" );
+                    System.out.println( "\tCompleted Relationship back linking " + (maxRelId - id) + " links in "
+                            + (current - startLinkBack) + " ms [" + (current - prev) + "]" );
                     prev = current;
                 }
             }
@@ -651,11 +646,67 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 System.out.println( "[Error in Relationship link back logic]" + e.getMessage() );
                 if ( errorCount++ > Constants.errorThreshold )
                 {
-                    throw new BatchImportException( "[Error in Relationship link back logic]{Errors exceeded error " +
-                            "threshold -" + errorCount + "]" );
+                    throw new BatchImportException( "[Error in Relationship link back logic]{Errors exceeded error "
+                            + "threshold -" + errorCount + "]" );
                 }
             }
         }
         return errorCount;
+    }
+
+    private int createRelTypeId( String relTypeName )
+    {
+        int typeId = this.relationshipTypeTokens.idOf( relTypeName );
+        if ( typeId == -1 )
+        {
+            typeId = this.createNewRelationshipType( relTypeName );
+        }
+        return typeId;
+    }
+
+    public void accumulateNodeCount( ReadFileData input ) throws BatchImportException
+    {
+        CSVDataBuffer buffer = new CSVDataBuffer( Constants.BUFFER_ENTRIES, Constants.BUFFER_SIZE_BYTES, null, 0 );
+        buffer.initRecords( input.getHeaderLength() );
+        do
+        {
+            StageContext.dataExtract( input, buffer );
+            for ( int index = 0; index < buffer.getCurEntries(); index++ )
+            {
+                long firstNode = buffer.getLong( index, 0 );
+                long secondNode = buffer.getLong( index, 1 );
+                nodeCache.incrementCount( firstNode );
+                nodeCache.incrementCount( secondNode );
+                createRelTypeId( buffer.getString( index, 2 ) );
+            }
+        }
+        while ( buffer.isMoreData() );
+    }
+
+    public void accumulateNodeCount( CSVDataBuffer buffer ) throws BatchImportException
+    {
+        for ( int index = 0; index < buffer.getCurEntries(); index++ )
+        {
+            long firstNode = buffer.getLong( index, 0 );
+            long secondNode = buffer.getLong( index, 1 );
+            nodeCache.incrementCount( firstNode );
+            nodeCache.incrementCount( secondNode );
+            createRelTypeId( buffer.getString( index, 2 ) );
+        }
+    }
+
+    public long writeRelationshipGroupRecords( long nodeId ) throws BatchImportException
+    {
+        if ( !nodeCache.nodeIsDense( nodeId ) )
+            return Record.NO_NEXT_RELATIONSHIP.intValue();
+        RelationshipGroupStore relGroupStore = neoStore.getRelationshipGroupStore();
+        long relGroupIndex = nodeCache.get( nodeId );
+        RelationshipGroupRecord[] recordArray = relationshipGroupCache.createRelationshipGroupRecordChain(
+                relGroupStore, relGroupIndex, nodeId );
+        for ( RelationshipGroupRecord record : recordArray )
+        {
+            relGroupStore.updateRecord( record );
+        }
+        return recordArray[0].getId();
     }
 }

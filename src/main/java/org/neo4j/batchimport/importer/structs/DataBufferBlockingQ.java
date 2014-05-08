@@ -230,7 +230,7 @@ public class DataBufferBlockingQ<DataBufferType>
         return count( buffer, qIndex, worker );
     }
 
-    public DataBufferType putBuffer( DataBufferType buf ) throws InterruptedException
+    public void putBuffer( DataBufferType buf ) throws InterruptedException
     {
         int curQ = ((AbstractDataBuffer) buf).getStageIndex();
         int nextQ = (((AbstractDataBuffer) buf).getStageIndex() + 1) % blockingQ.length;
@@ -247,6 +247,5 @@ public class DataBufferBlockingQ<DataBufferType>
             blockingQ[curQ].put( buf );
         }
         countDown( curQ );
-        return null;
     }
 }

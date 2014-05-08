@@ -16,9 +16,10 @@ import org.neo4j.batchimport.importer.stages.ImportNodeStage;
 import org.neo4j.batchimport.importer.stages.ImportRelationshipStage;
 import org.neo4j.batchimport.importer.stages.ReadFileData;
 import org.neo4j.batchimport.importer.stages.StageContext;
-import org.neo4j.batchimport.importer.stages.Stages;
+import org.neo4j.batchimport.importer.stages.MultiStage;
 import org.neo4j.batchimport.importer.stages.WriterStage;
 import org.neo4j.batchimport.importer.stages.WriterStages;
+import org.neo4j.batchimport.importer.stages.NodeStatsAccumulatorStage;
 import org.neo4j.batchimport.importer.structs.Constants;
 import org.neo4j.batchimport.importer.structs.Constants.ImportStageState;
 import org.neo4j.batchimport.importer.structs.DiskRecordsBuffer;
@@ -48,9 +49,8 @@ public class Importer
     private final BatchInserterIndexProvider indexProvider;
     Map<String, BatchInserterIndex> indexes = new HashMap<>();
     public static long startImport = 0;
-
     private final BatchInserterImplNew db;
-    private Stages importStages = null;
+    private MultiStage importStages = null;
     private NodesCache nodeCache = null;
     private boolean relationLinkbackNeeded = false;
 
@@ -58,8 +58,8 @@ public class Importer
     {
         this.config = config;
         Timestamp ts = new Timestamp( System.currentTimeMillis() );
-        System.out.println( "[Current time:" + ts.toString() + "][Compile Time:" + Utils.getVersionfinal( this
-                .getClass() ) + "]" );
+        System.out.println( "[Current time:" + ts.toString() + "][Compile Time:"
+                + Utils.getVersionfinal( this.getClass() ) + "]" );
         setDebugInfo( config );
         db = createBatchInserter( graphDb, config );
         final boolean luceneOnlyIndex = config.isCachedIndexDisabled();
@@ -98,15 +98,12 @@ public class Importer
         System.err.println( "Neo4j Data Importer" );
         System.err.println( Config.usage() );
         System.err.println();
-
         final Config config = Config.convertArgumentsToConfig( args );
-
         File graphDb = new File( config.getGraphDbDirectory() );
         if ( graphDb.exists() && !config.keepDatabase() )
         {
             FileUtils.deleteRecursively( graphDb );
         }
-
         Importer importer = new Importer( graphDb, config );
         importer.doImport();
         System.out.println( "Total time taken: " + (System.currentTimeMillis() - startImport) );
@@ -143,7 +140,6 @@ public class Importer
             index.add( id( data.getValue( 0 ) ), properties );
             report.dots();
         }
-
         report.finishImport( "Done inserting into " + indexName + " Index" );
     }
 
@@ -213,24 +209,23 @@ public class Importer
             }
             report( "Node Import complete in ", milestone );
             stepTime = milestone = System.currentTimeMillis();
-
             long nodeCount = db.getNeoStore().getNodeStore().getHighId();
             nodeCache = new NodesCache( nodeCount );
             db.setNodeCache( nodeCache );
-
-            NodeDegreeAccumulator discriminator = new NodeDegreeAccumulator( config, nodeCache );
+            //NodeDegreeAccumulator discriminator = new NodeDegreeAccumulator( config, db );
+            stepTime = System.currentTimeMillis();
             for ( File file : config.getRelsFiles() )
             {
-                discriminator.accumulate( Utils.createFileReader( file ) );
-                report( "\tRelationship file [" + file.getName() + "] imported in ", stepTime );
+                getRelStats( Utils.createFileReader( file ) );
+                report( "\tRelationship file [" + file.getName() + "] scanned in ", stepTime );
+                stepTime = System.currentTimeMillis();
             }
-
+            nodeCache.calculateDenseNodeThreshold( (int)db.getNeoStore().getRelationshipTypeStore().getHighId() );
             long denseNodeCount = nodeCache.getDenseNodeCount();
-            int relTypeCount = 4; // TODO figure out the real value
-            RelationshipGroupCache relGroupCache = new RelationshipGroupCache( denseNodeCount * relTypeCount,
-                    db.getNeoStore().getRelationshipGroupStore() );
+            int relTypeCount = (int) db.getNeoStore().getRelationshipTypeStore().getHighId();
+            RelationshipGroupCache relGroupCache = new RelationshipGroupCache( denseNodeCount * relTypeCount, db
+                    .getNeoStore().getRelationshipGroupStore() );
             db.setRelationshipGroupCache( relGroupCache );
-
             for ( File file : config.getRelsFiles() )
             {
                 importRelationships( Utils.createFileReader( file ) );
@@ -252,7 +247,7 @@ public class Importer
                 }
             }
         }
-        catch ( BatchImportException be )
+        catch ( Exception be )
         {
             report( "[Batch Import failed]" + be.getMessage(), -1 );
         }
@@ -262,7 +257,7 @@ public class Importer
         }
     }
 
-    private WriterStages setWriterStage( Stages importStages ) throws BatchImportException
+    private WriterStages setWriterStage( MultiStage importStages ) throws BatchImportException
     {
         WriterStages writerStages = new WriterStages( importStages, db );
         Class[] parameterTypes = new Class[1];
@@ -278,9 +273,9 @@ public class Importer
         return writerStages;
     }
 
-    private Stages setupStages() throws BatchImportException
+    private MultiStage setupStages() throws BatchImportException
     {
-        Stages importStages = new Stages( new StageContext( db, db, indexes ) );
+        MultiStage importStages = new MultiStage( new StageContext( db, db, indexes ) );
         WriterStages writerStages = setWriterStage( importStages );
         db.setDiskBlockingQ( writerStages.getDiskBlockingQ() );
         importStages.setDataBuffers( writerStages.getDiskRecordsCache() );
@@ -288,40 +283,53 @@ public class Importer
         return importStages;
     }
 
-    public void importNodes( Reader reader ) throws BatchImportException
+    public void importNodes( Reader reader ) throws Exception
     {
-        importStages = setupStages();
+        if ( importStages == null )
+            importStages = setupStages();
         if ( importStages.getState() != ImportStageState.NodeImport )
         {
             setupStagesForNodes();
         }
-        importNew( reader, 0 );
+        importNew( reader, 0, "Node Import" );
     }
 
-    public void importRelationships( Reader reader ) throws BatchImportException
+    public void importRelationships( Reader reader ) throws Exception
     {
-        importStages = setupStages();
+        if ( importStages == null )
+            importStages = setupStages();
         if ( importStages.getState() != ImportStageState.RelationshipImport )
         {
             setupStagesForRelationships();
         }
-        importNew( reader, 3 );
+        importNew( reader, 3, "Relationship Import" );
+    }
+    
+    public void getRelStats( Reader reader ) throws Exception
+    {
+        if ( importStages == null )
+            importStages = setupStages();
+        if ( importStages.getState() != ImportStageState.RelationshipPresacan )
+        {
+            setupStagesForRelationshipPrescan();
+        }
+        importNew( reader, 3, "Relationship Prescan" );
     }
 
-    private void importNew( Reader reader, int offset )
+    private void importNew( Reader reader, int offset, String message ) throws Exception
     {
         ReadFileData input = new ReadFileData( new BufferedReader( reader, Constants.BUFFERED_READER_BUFFER ),
                 config.getDelimChar(), offset, config.quotesEnabled() );
         db.setDataInput( input );
         importStages.start( input );
-        importStages.pollResults( db );
+        importStages.pollResults( db, message );
     }
 
     private void setupStagesForNodes() throws BatchImportException
     {
         try
         {
-            importStages.init( Constants.NODE, ImportNodeStage.values() );
+            importStages.init( ImportStageState.NodeImport, ImportNodeStage.values() );
             importStages.setSingleThreaded( false, true, false, false, false );
         }
         catch ( Exception e )
@@ -335,8 +343,20 @@ public class Importer
         relationLinkbackNeeded = true;
         try
         {
-            importStages.init( Constants.RELATIONSHIP, ImportRelationshipStage.values() );
+            importStages.init( ImportStageState.RelationshipImport, ImportRelationshipStage.values() );
             importStages.setSingleThreaded( false, true, false, true, false );
+        }
+        catch ( Exception e )
+        {
+            throw new BatchImportException( "[Relationship setup failed]", e );
+        }
+    }
+    private void setupStagesForRelationshipPrescan() throws BatchImportException
+    {
+        try
+        {
+            importStages.init( ImportStageState.RelationshipPresacan, NodeStatsAccumulatorStage.values() );
+            importStages.setSingleThreaded( false, true );
         }
         catch ( Exception e )
         {
@@ -368,7 +388,8 @@ public class Importer
                 {
                     //do nothing, just ignore and leave the setting at default
                 }
-                System.out.println( "Debug Mode [Poll interval:" + Constants.printPollInterval / 1000 + " secs][Progess interval:" + Constants.progressPollInterval / 1000 + " secs]" );
+                System.out.println( "Debug Mode [Poll interval:" + Constants.printPollInterval / 1000
+                        + " secs][Progess interval:" + Constants.progressPollInterval / 1000 + " secs]" );
             }
         }
     }

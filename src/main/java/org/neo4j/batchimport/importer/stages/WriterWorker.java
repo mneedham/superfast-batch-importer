@@ -8,11 +8,11 @@ public class WriterWorker extends java.lang.Thread
 {
     protected int workerType;
     protected String threadName;
-    protected Stages stages;
+    protected MultiStage stages;
     protected WriterStages writerStages;
     protected int writerIndex;
 
-    WriterWorker( int writerIndex, int type, Stages stages, WriterStages writerStages )
+    WriterWorker( int writerIndex, int type, MultiStage stages, WriterStages writerStages )
     {
         this.writerIndex = writerIndex;
         this.workerType = type;

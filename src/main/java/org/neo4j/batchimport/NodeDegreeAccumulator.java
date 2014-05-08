@@ -4,46 +4,71 @@ import java.io.BufferedReader;
 import java.io.Reader;
 
 import org.neo4j.batchimport.importer.stages.ReadFileData;
-import org.neo4j.batchimport.importer.stages.StageContext;
-import org.neo4j.batchimport.importer.structs.CSVDataBuffer;
 import org.neo4j.batchimport.importer.structs.Constants;
-import org.neo4j.batchimport.importer.structs.NodesCache;
+import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.batchimport.utils.Config;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
+import org.neo4j.unsafe.batchinsert.BatchInserterImpl;
+import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 
-public class NodeDegreeAccumulator
+public class NodeDegreeAccumulator extends java.lang.Thread
 {
     private final Config config;
-    private final NodesCache nodeCache;
+    private final BatchInserterImplNew db;
+    private ReadFileData input;
+    private boolean isComplete = false;
 
-    public NodeDegreeAccumulator( Config config, NodesCache nodeCache )
+    public NodeDegreeAccumulator( Config config, BatchInserterImplNew db )
     {
         this.config = config;
-        this.nodeCache = nodeCache;
+        this.db = db;
     }
 
-    public void accumulate( Reader nodesInput ) throws BatchImportException
+    public void setInput( Reader nodesInput ) throws BatchImportException
     {
-        CSVDataBuffer buffer = new CSVDataBuffer( Constants.BUFFER_ENTRIES,
-                Constants.BUFFER_SIZE_BYTES, null, 0 );
-        ReadFileData input =  new ReadFileData( new BufferedReader( nodesInput, Constants.BUFFERED_READER_BUFFER ),
+        input = new ReadFileData( new BufferedReader( nodesInput, Constants.BUFFERED_READER_BUFFER ),
                 config.getDelimChar(), 3, config.quotesEnabled() );
-        buffer.initRecords( input.getHeaderLength() );
+    }
 
-        do
+    @Override
+    public void run()
+    {
+        try
         {
-            StageContext.dataExtract( input, buffer );
-            for ( int index = 0; index < buffer.getCurEntries(); index++ )
+            db.accumulateNodeCount( input );
+            db.getNodeCache().calculateDenseNodeThreshold(
+                    (int) db.getNeoStore().getRelationshipTypeStore().getHighId() );
+        }
+        catch ( BatchImportException be )
+        {
+        }
+        isComplete = true;
+    }
+
+    public void pollResults( String progressHeader ) throws Exception
+    {
+        long waitCount = 0;
+        while ( true )
+        {
+            try
             {
-                long firstNode = buffer.getLong( index, 0 );
-                long secondNode = buffer.getLong( index, 1 );
-                nodeCache.incrementCount( firstNode );
-                nodeCache.incrementCount( secondNode );
+                Thread.sleep( 500 );
+                waitCount += 500;
+                if ( waitCount % Constants.progressPollInterval == 0 && db.getNeoStore() != null )
+                {
+                    System.out.print( progressHeader + ": [" + waitCount / 1000 + "] "
+                            + Utils.getMaxIds( db.getNeoStore(), true ) + '\r' );
+                }
+                if ( isComplete )
+                {
+                    return;
+                }
+            }
+            catch ( Exception e )
+            {
+                Utils.SystemOutPrintln( e.getMessage() + " Poll thread exception" );
+                throw e;
             }
         }
-        while ( buffer.isMoreData() );
-        nodeCache.calculateDenseNodeThreshold( 0.02d );
-
-        System.out.println( "dense node " + nodeCache.getDenseNodeCount() );
     }
 }

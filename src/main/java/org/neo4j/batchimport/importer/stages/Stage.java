@@ -8,4 +8,5 @@ public interface Stage
     String name();
 
     void execute( StageContext stageContext, ReadFileData input, CSVDataBuffer buf ) throws BatchImportException;
+
 }

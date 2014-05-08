@@ -1,35 +1,22 @@
 package org.neo4j.batchimport.importer.structs;
 
+import org.neo4j.kernel.api.Exceptions.BatchImportException;
 
 public class NodesCache
 {
-    private long[][] nodeCache = null;
-    private int numCache = 0;
+    private final int MAX_DEGREE = 200;
+    private ExtendableLongCache nodeCache = null;
     private long size = 0;
     private int denseNodeThreshold = -1;
     private long denseNodeCount = -1;
 
     public NodesCache( long nodeCount )
     {
-        numCache = nodeCount <= Integer.MAX_VALUE ? 1 : (int) ((nodeCount / Integer.MAX_VALUE) + 1);
-        nodeCache = new long[numCache][];
-        nodeCache[0] = new long[(int) (nodeCount % Integer.MAX_VALUE)];
-        for ( int i = 1; i < numCache; i++ )
-        {
-            nodeCache[i] = new long[Integer.MAX_VALUE];
-        }
+        int incrementSize = nodeCount <= Integer.MAX_VALUE ? (int)nodeCount : Integer.MAX_VALUE;
+        nodeCache = new ExtendableLongCache( incrementSize );
         size = nodeCount;
-        this.cleanIds( true /*aöö*/ );
-    }
-
-    private int getCacheIndex( long id )
-    {
-        return (int) ((id / Integer.MAX_VALUE));
-    }
-
-    private int getIndex( long id )
-    {
-        return (int) id % Integer.MAX_VALUE;
+        nodeCache.fill( 0 );
+        this.cleanIds( true /*aöö*/);
     }
 
     public long getSize()
@@ -37,7 +24,7 @@ public class NodesCache
         return size;
     }
 
-    public long put( long key, long value )
+    public long put( long key, long value ) throws BatchImportException
     {
         long field = getField( key );
         long previousValue = IdFieldManipulator.getId( field );
@@ -47,24 +34,20 @@ public class NodesCache
 
     private void setField( long key, long field )
     {
-        long[] cache = nodeCache[getCacheIndex( key )];
-        int index = getIndex( key );
-        cache[index] = field;
+        nodeCache.put( key, field );
     }
 
-    private long getField( long key )
+    private long getField( long key ) throws BatchImportException
     {
-        long[] cache = nodeCache[getCacheIndex( key )];
-        int index = getIndex( key );
-        return cache[index];
+        return nodeCache.get( key );
     }
 
-    public long get( long key )
+    public long get( long key ) throws BatchImportException
     {
         return IdFieldManipulator.getId( getField( key ) );
     }
 
-    int changeCount( long key, int diff )
+    int changeCount( long key, int diff ) throws BatchImportException
     {
         long field = IdFieldManipulator.changeCount( getField( key ), diff );
         int count = IdFieldManipulator.getCount( field );
@@ -72,33 +55,38 @@ public class NodesCache
         return count;
     }
 
-    public int incrementCount( long key )
+    public int incrementCount( long key ) throws BatchImportException
     {
         return changeCount( key, 1 );
     }
 
-    public int decrementCount( long key )
+    public int decrementCount( long key ) throws BatchImportException
     {
         return changeCount( key, -1 );
     }
 
-    public int getCount( long key )
+    public int getCount( long key ) throws BatchImportException
     {
         return IdFieldManipulator.getCount( getField( key ) );
     }
 
     public void cleanIds( boolean all )
     {
-        for ( int i = 0; i < numCache; i++ )
+        for ( int i = 0; i < nodeCache.size(); i++ )
         {
-            for ( int j = 0; j < nodeCache[i].length; j++ )
+            try
             {
+                int degree = IdFieldManipulator.getCount( nodeCache.get( i ) );
                 if ( all ||
-                        // sparse node
-                        IdFieldManipulator.getCount( nodeCache[i][j] ) < denseNodeThreshold )
+                // sparse node
+                        degree < denseNodeThreshold )
                 {
-                    nodeCache[i][j] = IdFieldManipulator.cleanId( nodeCache[i][j] );
+                    nodeCache.put( i, IdFieldManipulator.cleanId( nodeCache.get( i ) ) );
                 }
+            }
+            catch ( BatchImportException be )
+            {
+                // do nothing.
             }
         }
     }
@@ -108,12 +96,12 @@ public class NodesCache
         return IdFieldManipulator.MAX_COUNT;
     }
 
-    public boolean nodeIsDense( long key )
+    public boolean nodeIsDense( long key ) throws BatchImportException
     {
         return getCount( key ) >= denseNodeThreshold;
     }
 
-    public boolean checkAndSetVisited( long key )
+    public boolean checkAndSetVisited( long key ) throws BatchImportException
     {
         long field = getField( key );
         if ( IdFieldManipulator.isVisited( field ) )
@@ -124,22 +112,29 @@ public class NodesCache
         return false;
     }
 
-    public void calculateDenseNodeThreshold( double percent )
+    public void calculateDenseNodeThreshold( int numRelationshipTypes ) throws BatchImportException
     {
-        denseNodeThreshold = 15; // obviously hard coded and bad
-
+        denseNodeThreshold = -1;
         denseNodeCount = 0;
-        for ( long[] chard : nodeCache )
+        long[] numNodesOfDegree = new long[MAX_DEGREE + 1];
+        for ( long i = 0; i < nodeCache.size(); i++ )
         {
-            for ( long field : chard )
-            {
-                long count = IdFieldManipulator.getCount( field );
-                if ( count >= denseNodeThreshold )
-                {
-                    denseNodeCount++;
-                }
-            }
+            long degree = IdFieldManipulator.getCount( nodeCache.get( i ) );
+            if ( degree <= MAX_DEGREE )
+                numNodesOfDegree[(int) degree]++;
+            else
+                numNodesOfDegree[MAX_DEGREE]++;
         }
+        long threshold = size / (RelationshipGroupCache.ARRAY_ROW_SIZE * numRelationshipTypes);
+        denseNodeThreshold = MAX_DEGREE;
+        denseNodeCount = numNodesOfDegree[MAX_DEGREE];
+        while ( denseNodeCount <= threshold )
+        {
+            denseNodeCount += numNodesOfDegree[denseNodeThreshold--];
+        }
+        denseNodeThreshold += 1;
+        System.out.println( " denseNodeCount[" + denseNodeCount + "] denseNodeThreshold[" + denseNodeThreshold
+                + "] Percentage[" + (denseNodeCount * 100) / size + "]" );
     }
 
     public int getDenseNodeThreshold()

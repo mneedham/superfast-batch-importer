@@ -19,7 +19,7 @@ public class IdFieldManipulator
     public static long getId( long field )
     {
         long result = field & ID_BIT_MASK;
-        return result == ID_BIT_MASK ? -1 : result;
+        return result == ID_BIT_MASK ? -1 : result;         
     }
 
     public static long changeCount( long field, int diff )
