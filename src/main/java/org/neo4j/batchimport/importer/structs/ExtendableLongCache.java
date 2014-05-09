@@ -5,12 +5,13 @@ import java.util.Arrays;
 
 import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
+import org.neo4j.kernel.impl.nioneo.store.Record;
 
 public class ExtendableLongCache
 {
     protected int blockSize;
     protected ArrayList<long[]> cache;
-    public static final long EMPTY = -1;
+    public static final long EMPTY = Record.NO_NEXT_RELATIONSHIP.intValue();
 
     public ExtendableLongCache( int incrementSize )
     {

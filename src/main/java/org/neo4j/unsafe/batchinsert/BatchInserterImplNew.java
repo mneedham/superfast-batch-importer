@@ -272,12 +272,10 @@ public class BatchInserterImplNew extends BatchInserterImpl
             {
                 relGroupIndex = relationshipGroupCache.allocate( rel.getType(), Direction.BOTH, rel.getId() );
                 nodeCache.put( nodeId, relGroupIndex );
-                System.out.println( "dense loop " + nodeId + " --> " + relGroupIndex );
-                return -1;
+                return Record.NO_NEXT_RELATIONSHIP.intValue();
             }
             else
             {
-                System.out.println( "dense loop " + nodeId + " <-- " + relGroupIndex );
                 return relationshipGroupCache.put( relGroupIndex, rel.getType(), Direction.BOTH, rel.getId(),
                         forwardScan );
             }
@@ -300,10 +298,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
             {
                 relGroupIndex = relationshipGroupCache.allocate( rel.getType(), direction, rel.getId() );
                 nodeCache.put( nodeId, relGroupIndex );
-                if ( nodeId == 277314 )
-                    System.out.println( "RelgroupId=" + nodeCache.get( nodeId ) );
                 //System.out.println( "dense node " + nodeId + " --> " + relGroupIndex );
-                return -1;
+                return Record.NO_NEXT_RELATIONSHIP.intValue();
             }
             else
             {
@@ -573,6 +569,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
             nodeCache.cleanIds( false );
             System.out.println( "Cleaned IDs" );
         }
+        if (relationshipGroupCache != null)
+            relationshipGroupCache.clearAllIDs();
         long startLinkBack = prev = System.currentTimeMillis();
         for ( long id = maxRelId - 1; id >= 0; id-- )
         {
@@ -581,8 +579,10 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 relRecord = neoStore.getRelationshipStore().getRecord( id );
                 if ( !relRecord.inUse() )
                 {
-                    System.out.println( "Relationship [" + relRecord.getId() + " [" + relRecord.toString()
-                            + "] not in use" );
+                    String msg = "Relationship [" + relRecord.getId() + " [" + relRecord.toString()
+                            + "] not in use" ;
+                    System.out.println( msg);
+                    throw new BatchImportException( msg ); 
                 }
                 relId = relRecord.getId();
                 firstNode = relRecord.getFirstNode();
@@ -591,7 +591,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 if ( firstNode == secondNode )
                 {
                     firstPrevRel = secondPrevRel = doNodeLoopStuff( relRecord, false );
-                    if ( !nodeCache.checkAndSetVisited( firstNode ) )
+                    if (firstPrevRel == Record.NO_NEXT_RELATIONSHIP.intValue())
                     { // First relationship for this node
                         relRecord.setFirstInFirstChain( true );
                         relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
@@ -607,7 +607,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 else
                 {
                     firstPrevRel = doNodeStuff( firstNode, relRecord, Direction.OUTGOING, false );
-                    if ( !nodeCache.checkAndSetVisited( firstNode ) )
+                    if (firstPrevRel == Record.NO_NEXT_RELATIONSHIP.intValue())
                     { // First relationship for this node
                         relRecord.setFirstInFirstChain( true );
                         relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
@@ -617,7 +617,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
                         relRecord.setFirstPrevRel( firstPrevRel );
                     }
                     secondPrevRel = doNodeStuff( secondNode, relRecord, Direction.INCOMING, false );
-                    if ( !nodeCache.checkAndSetVisited( secondNode ) )
+                    if (secondPrevRel == Record.NO_NEXT_RELATIONSHIP.intValue())
                     { // First relationship for this node
                         relRecord.setFirstInSecondChain( true );
                         relRecord.setSecondPrevRel( nodeCache.getCount( secondNode ) );

@@ -21,7 +21,7 @@ public class RelationshipGroupCacheTest
         Direction direction = Direction.INCOMING;
         long relId = 15;
         IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
-        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
+        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner, 100 );
 
         // then
         long relGroupCachePosition = cache.allocate( type, direction, relId );
@@ -66,7 +66,7 @@ public class RelationshipGroupCacheTest
         long nodeCount = 1000;
         Direction direction = Direction.INCOMING;
         IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
-        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
+        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner, 100 );
 
         // then
         long relGroupCachePosition = -1;
@@ -99,7 +99,7 @@ public class RelationshipGroupCacheTest
         Direction direction1 = Direction.INCOMING;
         Direction direction2 = Direction.OUTGOING;
         IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
-        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
+        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner, 100 );
 
         // then
         long type1RelId = 15;
@@ -129,7 +129,7 @@ public class RelationshipGroupCacheTest
         int type = 1;
         Direction direction = Direction.INCOMING;
         IdSequence assigner = new CapturingRelationshipGroupIdAssigner();
-        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner );
+        RelationshipGroupCache cache = new RelationshipGroupCache( nodeCount, assigner, 100 );
 
         // then
         {
@@ -150,7 +150,7 @@ public class RelationshipGroupCacheTest
     public void shouldVisitNodeOnce() throws Exception
     {
         // GIVEN
-        RelationshipGroupCache cache = new RelationshipGroupCache( 100, new CapturingRelationshipGroupIdAssigner() );
+        RelationshipGroupCache cache = new RelationshipGroupCache( 100, new CapturingRelationshipGroupIdAssigner(), 10 );
         long index = cache.allocate( 0, Direction.OUTGOING, 0 );
         cache.put( index, 1, Direction.OUTGOING, 10, true );
         cache.put( index, 2, Direction.OUTGOING, 12, true );

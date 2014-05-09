@@ -28,14 +28,22 @@ import org.neo4j.batchimport.importer.structs.RelationshipGroupCache;
 import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.batchimport.index.MapDbCachingIndexProvider;
 import org.neo4j.batchimport.utils.Config;
+import org.neo4j.consistency.ConsistencyCheckService;
+import org.neo4j.consistency.ConsistencyCheckSettings;
+import org.neo4j.consistency.checking.full.ConsistencyCheckIncompleteException;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.graphdb.index.IndexManager;
+import org.neo4j.helpers.progress.ProgressMonitorFactory;
 import org.neo4j.index.lucene.unsafe.batchinsert.LuceneBatchInserterIndexProvider;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
 import org.neo4j.kernel.impl.util.FileUtils;
+import org.neo4j.kernel.impl.util.StringLogger;
 import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndexProvider;
 
+import static org.junit.Assert.assertTrue;
+import static org.neo4j.helpers.collection.MapUtil.stringMap;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.EXACT_CONFIG;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.FULLTEXT_CONFIG;
 
@@ -107,6 +115,7 @@ public class Importer
         Importer importer = new Importer( graphDb, config );
         importer.doImport();
         System.out.println( "Total time taken: " + (System.currentTimeMillis() - startImport) );
+        checkConsistency( config );
     }
 
     void finish()
@@ -186,11 +195,11 @@ public class Importer
     {
         if ( prevTime == -1 )
         {
-            System.out.println( Utils.getCurrentTimeStamp() + header );
+            System.out.print( Utils.getCurrentTimeStamp() + header );
         }
         else
         {
-            System.out.println( Utils.getCurrentTimeStamp() + header + (System.currentTimeMillis() - prevTime) / 1000
+            System.out.print( Utils.getCurrentTimeStamp() + header + (System.currentTimeMillis() - prevTime) / 1000
                     + " secs - [" + Utils.getMaxIds( db.getNeoStore() ) + "]" );
         }
     }
@@ -220,7 +229,7 @@ public class Importer
                 report( "\tRelationship file [" + file.getName() + "] scanned in ", stepTime );
                 stepTime = System.currentTimeMillis();
             }
-            nodeCache.calculateDenseNodeThreshold( (int)db.getNeoStore().getRelationshipTypeStore().getHighId() );
+            nodeCache.calculateDenseNodeThreshold( (int) db.getNeoStore().getRelationshipTypeStore().getHighId() );
             long denseNodeCount = nodeCache.getDenseNodeCount();
             int relTypeCount = (int) db.getNeoStore().getRelationshipTypeStore().getHighId();
             RelationshipGroupCache relGroupCache = new RelationshipGroupCache( denseNodeCount * relTypeCount, db
@@ -304,7 +313,7 @@ public class Importer
         }
         importNew( reader, 3, "Relationship Import" );
     }
-    
+
     public void getRelStats( Reader reader ) throws Exception
     {
         if ( importStages == null )
@@ -351,6 +360,7 @@ public class Importer
             throw new BatchImportException( "[Relationship setup failed]", e );
         }
     }
+
     private void setupStagesForRelationshipPrescan() throws BatchImportException
     {
         try
@@ -390,6 +400,27 @@ public class Importer
                 }
                 System.out.println( "Debug Mode [Poll interval:" + Constants.printPollInterval / 1000
                         + " secs][Progess interval:" + Constants.progressPollInterval / 1000 + " secs]" );
+            }
+        }
+    }
+
+    static private void checkConsistency( Config config )
+    {
+        String check = config.get( Config.CHECK_CONSISTENCY );
+        if ( check != null && check.equalsIgnoreCase( "true" ) )
+        {
+            Map<String, String> specifiedProperties = stringMap();
+            specifiedProperties.put( GraphDatabaseSettings.store_dir.name(), config.getGraphDbDirectory() );
+            try
+            {
+                ConsistencyCheckService.Result result = new ConsistencyCheckService().runFullConsistencyCheck( config
+                        .getGraphDbDirectory(), new org.neo4j.kernel.configuration.Config( specifiedProperties, GraphDatabaseSettings.class,
+                        ConsistencyCheckSettings.class ), ProgressMonitorFactory.textual( System.err ),
+                        StringLogger.SYSTEM );
+            }
+            catch ( ConsistencyCheckIncompleteException ce )
+            {
+                System.out.println( "Could not do consistency check - " + ce.getMessage() );
             }
         }
     }

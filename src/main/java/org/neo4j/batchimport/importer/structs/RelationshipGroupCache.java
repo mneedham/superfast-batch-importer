@@ -21,21 +21,40 @@ public class RelationshipGroupCache
     private static final int INDEX_IN = 3;
     private static final int INDEX_LOOP = 4;
     public static final int ARRAY_ROW_SIZE = 5;
-    private final IdSequence relationshipGroupIdAssigner;
-    private final ExtendableLongCache cache;
-    private final ExtendableLongCache relGroupId;
+    private static final int DEFAULT_INITIAL_SIZE = 1000000;
+    private IdSequence relationshipGroupIdAssigner;
+    private ExtendableLongCache cache;
+    private ExtendableLongCache relGroupId;
     private int nextFreeId = 0;
 
     public RelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner )
     {
+        createRelationshipGroupCache( denseNodeCount, relationshipGroupIdAssigner, DEFAULT_INITIAL_SIZE );
+    }
+
+    public RelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner, int initialSize )
+    {
+        createRelationshipGroupCache( denseNodeCount, relationshipGroupIdAssigner, initialSize );
+    }
+
+    private void createRelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner,
+            int initialSize )
+    {
         this.relationshipGroupIdAssigner = relationshipGroupIdAssigner;
-        int increment = (Utils.safeCastLongToInt( denseNodeCount ) / 10) * ARRAY_ROW_SIZE;
+        int increment = Utils.safeCastLongToInt( denseNodeCount ) * ARRAY_ROW_SIZE;
+        if ( increment > initialSize )
+            increment = (Utils.safeCastLongToInt( denseNodeCount ) / 10) * ARRAY_ROW_SIZE;
         cache = new ExtendableLongCache( increment );
         relGroupId = new ExtendableLongCache( Utils.safeCastLongToInt( denseNodeCount ) );
-        System.out.println( "Rel group cache array initialized to " + denseNodeCount / 10 + "*" + ARRAY_ROW_SIZE + "="
-                + cache.size() + "with increment = " + increment );
+        System.out.println( "Rel group cache [Max Size:" + denseNodeCount * ARRAY_ROW_SIZE + " Initial size:"
+                + cache.size() + " with increment = " + increment + "]" );
         cache.fill( ExtendableLongCache.EMPTY );
         relGroupId.fill( ExtendableLongCache.EMPTY );
+    }
+
+    public long size()
+    {
+        return nextFreeId;
     }
 
     public long allocate( int type, Direction direction, long relId ) throws BatchImportException
@@ -163,6 +182,13 @@ public class RelationshipGroupCache
         return cache.get( physicalIndex );
     }
 
+    private long getIdField( long relGroupCachePosition, int index ) throws BatchImportException
+    {
+        long physicalIndex = physicalIndex( relGroupCachePosition, index );
+        long field = cache.get( physicalIndex );
+        return IdFieldManipulator.getId( field );
+    }
+
     private long physicalIndex( long relGroupCachePosition, int index )
     {
         return ((relGroupCachePosition * ARRAY_ROW_SIZE) + index);
@@ -241,15 +267,16 @@ public class RelationshipGroupCache
             record.setCreated();
             record.setInUse( true );
             record.setOwningNode( nodeId );
-            record.setFirstIn( getField( relGroupIndex, INDEX_IN ) );
-            record.setFirstOut( getField( relGroupIndex, INDEX_OUT ) );
-            record.setFirstLoop( getField( relGroupIndex, INDEX_LOOP ) );
+            record.setFirstIn( getIdField( relGroupIndex, INDEX_IN ) );
+            record.setFirstOut( getIdField( relGroupIndex, INDEX_OUT ) );
+            record.setFirstLoop( getIdField( relGroupIndex, INDEX_LOOP ) );
             long nextIndex = getField( relGroupIndex, INDEX_NEXT );
             if ( previous != null )
             {
                 previous.setNext( record.getId() );
                 record.setPrev( previous.getId() );
-            } else
+            }
+            else
                 record.setPrev( Record.NO_NEXT_RELATIONSHIP.intValue() );
             if ( empty( nextIndex ) )
             {
@@ -259,6 +286,17 @@ public class RelationshipGroupCache
             previous = record;
             relGroupIndex = nextIndex;
         }
-        return relGrpRecords.toArray(new RelationshipGroupRecord[0]);
+        return relGrpRecords.toArray( new RelationshipGroupRecord[0] );
+    }
+
+    public void clearAllIDs() throws BatchImportException
+    {
+        long size = size();
+        for ( long i = 0; i < size; i++ )
+        {
+            setIdField( i, INDEX_IN, Record.NO_NEXT_RELATIONSHIP.intValue(), false );
+            setIdField( i, INDEX_OUT, Record.NO_NEXT_RELATIONSHIP.intValue(), false );
+            setIdField( i, INDEX_LOOP, Record.NO_NEXT_RELATIONSHIP.intValue(), false );
+        }
     }
 }
