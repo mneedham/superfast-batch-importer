@@ -219,9 +219,8 @@ public class Importer
             report( "Node Import complete in ", milestone );
             stepTime = milestone = System.currentTimeMillis();
             long nodeCount = db.getNeoStore().getNodeStore().getHighId();
-            nodeCache = new NodesCache( nodeCount );
+            nodeCache = new NodesCache( nodeCount, db.getNeoStore() );
             db.setNodeCache( nodeCache );
-            //NodeDegreeAccumulator discriminator = new NodeDegreeAccumulator( config, db );
             stepTime = System.currentTimeMillis();
             for ( File file : config.getRelsFiles() )
             {
@@ -229,12 +228,8 @@ public class Importer
                 report( "\tRelationship file [" + file.getName() + "] scanned in ", stepTime );
                 stepTime = System.currentTimeMillis();
             }
-            nodeCache.calculateDenseNodeThreshold( (int) db.getNeoStore().getRelationshipTypeStore().getHighId() );
-            long denseNodeCount = nodeCache.getDenseNodeCount();
-            int relTypeCount = (int) db.getNeoStore().getRelationshipTypeStore().getHighId();
-            RelationshipGroupCache relGroupCache = new RelationshipGroupCache( denseNodeCount * relTypeCount, db
-                    .getNeoStore().getRelationshipGroupStore() );
-            db.setRelationshipGroupCache( relGroupCache );
+            nodeCache.calculateDenseNodeThreshold();
+            nodeCache.createRelationshipGroupCache();
             for ( File file : config.getRelsFiles() )
             {
                 importRelationships( Utils.createFileReader( file ) );

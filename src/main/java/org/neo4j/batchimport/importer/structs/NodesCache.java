@@ -1,6 +1,8 @@
 package org.neo4j.batchimport.importer.structs;
 
+import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.kernel.api.Exceptions.BatchImportException;
+import org.neo4j.kernel.impl.nioneo.store.NeoStore;
 
 public class NodesCache
 {
@@ -9,9 +11,12 @@ public class NodesCache
     private long size = 0;
     private int denseNodeThreshold = -1;
     private long denseNodeCount = -1;
+    private NeoStore neoStore;
+    RelationshipGroupCache relGroupCache;
 
-    public NodesCache( long nodeCount )
+    public NodesCache( long nodeCount , NeoStore neoStore)
     {
+        this.neoStore = neoStore;
         int incrementSize = nodeCount <= Integer.MAX_VALUE ? (int)nodeCount : Integer.MAX_VALUE;
         nodeCache = new ExtendableLongCache( incrementSize );
         size = nodeCount;
@@ -112,8 +117,9 @@ public class NodesCache
         return false;
     }
 
-    public void calculateDenseNodeThreshold( int numRelationshipTypes ) throws BatchImportException
+    public void calculateDenseNodeThreshold() throws BatchImportException
     {
+        int numRelationshipTypes = Utils.safeCastLongToInt( neoStore.getRelationshipTypeStore().getHighId() );
         denseNodeThreshold = -1;
         denseNodeCount = 0;
         long[] numNodesOfDegree = new long[MAX_DEGREE + 1];
@@ -154,4 +160,15 @@ public class NodesCache
         }
         return denseNodeCount;
     }
+    
+    public void createRelationshipGroupCache(){
+        int relTypeCount = Utils.safeCastLongToInt( neoStore.getRelationshipTypeStore().getHighId() );
+        relGroupCache = new RelationshipGroupCache( denseNodeCount * relTypeCount, neoStore.getRelationshipGroupStore() );
+    }
+    
+    public RelationshipGroupCache getRelationshipGroupCache()
+    {
+        return relGroupCache;
+    }
+    
 }

@@ -1,4 +1,5 @@
 #!/bin/bash
+
 if [ ! -d lib ]; then
   echo lib directory of binary download missing. Please download the zip or run import-mvn.sh
   exit 1

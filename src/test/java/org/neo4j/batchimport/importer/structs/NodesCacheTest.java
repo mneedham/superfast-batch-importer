@@ -12,7 +12,7 @@ public class NodesCacheTest
     public void shouldStoreAndRetrieveRelationshipId() throws Exception
     {
         // given
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
 
         // when
         cache.put( 1, 2 );
@@ -26,7 +26,7 @@ public class NodesCacheTest
     public void shouldRetrieveUnsetRelationshipId() throws Exception
     {
         // given
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
 
         // then
         long retrievedRelationshipId = cache.get( 1 );
@@ -37,7 +37,7 @@ public class NodesCacheTest
     public void shouldCountRelationships() throws Exception
     {
         // given
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
 
         // when
         assertEquals( 0, cache.getCount( 1 ) );
@@ -60,7 +60,7 @@ public class NodesCacheTest
     public void shouldPreventNegativeCount() throws Exception
     {
         // given
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
         assertEquals( 0, cache.getCount( 1 ) );
 
         // when
@@ -79,7 +79,7 @@ public class NodesCacheTest
     public void shouldPreventOverflowCount() throws Exception
     {
         // given
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
         cache.changeCount( 1, cache.maxCount() );
         assertEquals( Math.pow( 2, 28 ) - 1, cache.getCount( 1 ), 0.1 );
 
@@ -99,7 +99,7 @@ public class NodesCacheTest
     public void shouldVisitNodeOnce() throws Exception
     {
         // GIVEN
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
 
         // THEN
         assertFalse( cache.checkAndSetVisited( 1 ) );
@@ -115,7 +115,7 @@ public class NodesCacheTest
     public void visitBitShouldNotAffectCount() throws Exception
     {
         // GIVEN
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
         int count = cache.maxCount();
         cache.changeCount( 1, count );
 
@@ -133,7 +133,7 @@ public class NodesCacheTest
     public void idChangeShouldNotAffectOtherBits() throws Exception
     {
         // GIVEN
-        NodesCache cache = new NodesCache( 100 );
+        NodesCache cache = new NodesCache( 100, null );
         long nodeId = 1;
         cache.put( nodeId, 10 );
         cache.changeCount( nodeId, 123 );

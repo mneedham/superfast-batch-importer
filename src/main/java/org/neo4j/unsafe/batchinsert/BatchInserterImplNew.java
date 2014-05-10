@@ -45,7 +45,7 @@ public class BatchInserterImplNew extends BatchInserterImpl
     private ReadFileData dataInput = null;
     private DiskBlockingQ diskBlockingQ;
     private NodesCache nodeCache = null;
-    private RelationshipGroupCache relationshipGroupCache = null;
+    //private RelationshipGroupCache relationshipGroupCache = null;
     private NeoStore neoStore = null;
 
     public BatchInserterImplNew( String storeDir, Map<String, String> stringParams )
@@ -63,11 +63,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
     public NodesCache getNodeCache()
     {
         return nodeCache;
-    }
-
-    public void setRelationshipGroupCache( RelationshipGroupCache relationshipGroupCache )
-    {
-        this.relationshipGroupCache = relationshipGroupCache;
     }
 
     private NodeStore getNodeStore()
@@ -252,8 +247,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 }
                 assert firstNextRel != rel.getId();
                 assert secondNextRel != rel.getId();
-                rel.setFirstNextRel( firstNextRel );
-                rel.setSecondNextRel( secondNextRel );
+                /*rel.setFirstNextRel( firstNextRel );
+                rel.setSecondNextRel( secondNextRel );*/
             }
             catch ( Exception e )
             {
@@ -270,20 +265,47 @@ public class BatchInserterImplNew extends BatchInserterImpl
             long relGroupIndex = nodeCache.get( nodeId );
             if ( relGroupIndex == -1 )
             {
-                relGroupIndex = relationshipGroupCache.allocate( rel.getType(), Direction.BOTH, rel.getId() );
+                relGroupIndex = nodeCache.getRelationshipGroupCache().allocate( rel.getType(), Direction.BOTH,
+                        rel.getId() );
                 nodeCache.put( nodeId, relGroupIndex );
+                if ( !forwardScan )
+                    throw new BatchImportException(
+                            "During Back linking of relationships, encountered RelGroupInde = -1" );
+                rel.setFirstNextRel( Record.NO_NEXT_RELATIONSHIP.intValue() );
+                rel.setSecondNextRel( Record.NO_NEXT_RELATIONSHIP.intValue() );
                 return Record.NO_NEXT_RELATIONSHIP.intValue();
             }
             else
             {
-                return relationshipGroupCache.put( relGroupIndex, rel.getType(), Direction.BOTH, rel.getId(),
-                        forwardScan );
+                long previousRel = nodeCache.getRelationshipGroupCache().put( relGroupIndex, rel.getType(),
+                        Direction.BOTH, rel.getId(), forwardScan );
+                if ( !forwardScan && previousRel == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                {
+                    //this is first relationship during link back
+                    rel.setFirstInFirstChain( true );
+                    rel.setFirstInSecondChain( true );
+                    rel.setFirstPrevRel( nodeCache.getRelationshipGroupCache().getCount( nodeCache.get( nodeId ),
+                            Direction.BOTH ) );
+                    rel.setSecondPrevRel( nodeCache.getRelationshipGroupCache().getCount( nodeCache.get( nodeId ),
+                            Direction.BOTH ) );
+                }
+                return previousRel;
             }
         }
         else
         { // sparse
             long result = nodeCache.get( nodeId );
             nodeCache.put( nodeId, rel.getId() );
+            if ( forwardScan )
+            {
+                rel.setFirstNextRel( result );
+                rel.setSecondNextRel( result );
+            }
+            else
+            {
+                rel.setFirstPrevRel( result );
+                rel.setSecondPrevRel( result );
+            }
             return result;
         }
     }
@@ -295,22 +317,68 @@ public class BatchInserterImplNew extends BatchInserterImpl
         { // This is a dense node
             long relGroupIndex = nodeCache.get( nodeId );
             if ( relGroupIndex == -1 )
-            {
-                relGroupIndex = relationshipGroupCache.allocate( rel.getType(), direction, rel.getId() );
+            { // this can happen only in forward scan
+                if ( !forwardScan )
+                    throw new BatchImportException(
+                            "During Back linking of relationships, encountered RelGroupIndex = -1" );
+                relGroupIndex = nodeCache.getRelationshipGroupCache().allocate( rel.getType(), direction, rel.getId() );
                 nodeCache.put( nodeId, relGroupIndex );
-                //System.out.println( "dense node " + nodeId + " --> " + relGroupIndex );
+                if ( direction == Direction.OUTGOING )
+                    rel.setFirstNextRel( Record.NO_NEXT_RELATIONSHIP.intValue() );
+                else
+                    rel.setSecondNextRel( Record.NO_NEXT_RELATIONSHIP.intValue() );
                 return Record.NO_NEXT_RELATIONSHIP.intValue();
             }
             else
             {
-                //System.out.println( "dense node " + nodeId + " <-- " + relGroupIndex );
-                return relationshipGroupCache.put( relGroupIndex, rel.getType(), direction, rel.getId(), forwardScan );
+                long previousRel = nodeCache.getRelationshipGroupCache().put( relGroupIndex, rel.getType(), direction,
+                        rel.getId(), forwardScan );
+                if ( !forwardScan )
+                {
+                    if ( direction == Direction.OUTGOING )
+                    {
+                        rel.setFirstPrevRel( nodeCache.getRelationshipGroupCache().getCount( nodeCache.get( nodeId ),
+                                direction ) );
+                        if ( previousRel == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                            rel.setFirstInFirstChain( true );
+                    }
+                    else
+                    {
+                        rel.setSecondPrevRel( nodeCache.getRelationshipGroupCache().getCount( nodeCache.get( nodeId ),
+                                direction ) );
+                        if ( previousRel == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                            rel.setFirstInSecondChain( true );
+                    }
+                }
+                return previousRel;
             }
         }
         else
         { // This is a sparse node
             long result = nodeCache.get( nodeId );
             nodeCache.put( nodeId, rel.getId() );
+            if ( forwardScan )
+            {
+                if ( direction == Direction.OUTGOING )
+                    rel.setFirstNextRel( result );
+                else
+                    rel.setSecondNextRel( result );
+            }
+            else
+            {
+                if ( direction == Direction.OUTGOING )
+                {
+                    rel.setFirstPrevRel( result );
+                    if ( result == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                        rel.setFirstInFirstChain( true );
+                }
+                else
+                {
+                    rel.setSecondPrevRel( result );
+                    if ( result == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                        rel.setFirstInSecondChain( true );
+                }
+            }
             return result;
         }
     }
@@ -562,15 +630,15 @@ public class BatchInserterImplNew extends BatchInserterImpl
         long maxRelId = neoStore.getRelationshipStore().getHighId();
         if ( nodeCache == null )
         {
-            nodeCache = new NodesCache( maxNodeId );
+            nodeCache = new NodesCache( maxNodeId, neoStore );
         }
         else
         {
             nodeCache.cleanIds( false );
             System.out.println( "Cleaned IDs" );
         }
-        if (relationshipGroupCache != null)
-            relationshipGroupCache.clearAllIDs();
+        if ( nodeCache.getRelationshipGroupCache() != null )
+            nodeCache.getRelationshipGroupCache().clearAllIDs();
         long startLinkBack = prev = System.currentTimeMillis();
         for ( long id = maxRelId - 1; id >= 0; id-- )
         {
@@ -579,59 +647,23 @@ public class BatchInserterImplNew extends BatchInserterImpl
                 relRecord = neoStore.getRelationshipStore().getRecord( id );
                 if ( !relRecord.inUse() )
                 {
-                    String msg = "Relationship [" + relRecord.getId() + " [" + relRecord.toString()
-                            + "] not in use" ;
-                    System.out.println( msg);
-                    throw new BatchImportException( msg ); 
+                    String msg = "Relationship [" + relRecord.getId() + " [" + relRecord.toString() + "] not in use";
+                    System.out.println( msg );
+                    throw new BatchImportException( msg );
                 }
                 relId = relRecord.getId();
                 firstNode = relRecord.getFirstNode();
                 secondNode = relRecord.getSecondNode();
-                long firstPrevRel, secondPrevRel;
                 if ( firstNode == secondNode )
                 {
-                    firstPrevRel = secondPrevRel = doNodeLoopStuff( relRecord, false );
-                    if (firstPrevRel == Record.NO_NEXT_RELATIONSHIP.intValue())
-                    { // First relationship for this node
-                        relRecord.setFirstInFirstChain( true );
-                        relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
-                        relRecord.setFirstInSecondChain( true );
-                        relRecord.setSecondPrevRel( nodeCache.getCount( firstNode ) );
-                    }
-                    else
-                    {
-                        relRecord.setFirstPrevRel( firstPrevRel );
-                        relRecord.setSecondPrevRel( secondPrevRel );
-                    }
+                    doNodeLoopStuff( relRecord, false );
                 }
                 else
                 {
-                    firstPrevRel = doNodeStuff( firstNode, relRecord, Direction.OUTGOING, false );
-                    if (firstPrevRel == Record.NO_NEXT_RELATIONSHIP.intValue())
-                    { // First relationship for this node
-                        relRecord.setFirstInFirstChain( true );
-                        relRecord.setFirstPrevRel( nodeCache.getCount( firstNode ) );
-                    }
-                    else
-                    {
-                        relRecord.setFirstPrevRel( firstPrevRel );
-                    }
-                    secondPrevRel = doNodeStuff( secondNode, relRecord, Direction.INCOMING, false );
-                    if (secondPrevRel == Record.NO_NEXT_RELATIONSHIP.intValue())
-                    { // First relationship for this node
-                        relRecord.setFirstInSecondChain( true );
-                        relRecord.setSecondPrevRel( nodeCache.getCount( secondNode ) );
-                    }
-                    else
-                    {
-                        relRecord.setSecondPrevRel( secondPrevRel );
-                    }
+                    doNodeStuff( firstNode, relRecord, Direction.OUTGOING, false );
+                    doNodeStuff( secondNode, relRecord, Direction.INCOMING, false );
                 }
                 neoStore.getRelationshipStore().updateRecord( relRecord );
-                if ( !nodeCache.nodeIsDense( firstNode ) )
-                    nodeCache.put( firstNode, relId );
-                if ( !nodeCache.nodeIsDense( secondNode ) )
-                    nodeCache.put( secondNode, relId );
                 if ( id % 10000000 == 0 )
                 {
                     current = System.currentTimeMillis();
@@ -701,8 +733,8 @@ public class BatchInserterImplNew extends BatchInserterImpl
             return Record.NO_NEXT_RELATIONSHIP.intValue();
         RelationshipGroupStore relGroupStore = neoStore.getRelationshipGroupStore();
         long relGroupIndex = nodeCache.get( nodeId );
-        RelationshipGroupRecord[] recordArray = relationshipGroupCache.createRelationshipGroupRecordChain(
-                relGroupStore, relGroupIndex, nodeId );
+        RelationshipGroupRecord[] recordArray = nodeCache.getRelationshipGroupCache()
+                .createRelationshipGroupRecordChain( relGroupStore, relGroupIndex, nodeId );
         for ( RelationshipGroupRecord record : recordArray )
         {
             relGroupStore.updateRecord( record );

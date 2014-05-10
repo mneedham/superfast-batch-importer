@@ -21,7 +21,7 @@ public class RelationshipGroupCache
     private static final int INDEX_IN = 3;
     private static final int INDEX_LOOP = 4;
     public static final int ARRAY_ROW_SIZE = 5;
-    private static final int DEFAULT_INITIAL_SIZE = 1000000;
+    private static final int DEFAULT_BLOCK_SIZE = 1000000;
     private IdSequence relationshipGroupIdAssigner;
     private ExtendableLongCache cache;
     private ExtendableLongCache relGroupId;
@@ -29,7 +29,7 @@ public class RelationshipGroupCache
 
     public RelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner )
     {
-        createRelationshipGroupCache( denseNodeCount, relationshipGroupIdAssigner, DEFAULT_INITIAL_SIZE );
+        createRelationshipGroupCache( denseNodeCount, relationshipGroupIdAssigner, DEFAULT_BLOCK_SIZE );
     }
 
     public RelationshipGroupCache( long denseNodeCount, IdSequence relationshipGroupIdAssigner, int initialSize )
@@ -41,9 +41,8 @@ public class RelationshipGroupCache
             int initialSize )
     {
         this.relationshipGroupIdAssigner = relationshipGroupIdAssigner;
-        int increment = Utils.safeCastLongToInt( denseNodeCount ) * ARRAY_ROW_SIZE;
-        if ( increment > initialSize )
-            increment = (Utils.safeCastLongToInt( denseNodeCount ) / 10) * ARRAY_ROW_SIZE;
+        int neededSize =  denseNodeCount * ARRAY_ROW_SIZE > Integer.MAX_VALUE ? Integer.MAX_VALUE : Utils.safeCastLongToInt( denseNodeCount ) * ARRAY_ROW_SIZE ;
+        int increment = Math.min( initialSize, neededSize);
         cache = new ExtendableLongCache( increment );
         relGroupId = new ExtendableLongCache( Utils.safeCastLongToInt( denseNodeCount ) );
         System.out.println( "Rel group cache [Max Size:" + denseNodeCount * ARRAY_ROW_SIZE + " Initial size:"
@@ -152,7 +151,12 @@ public class RelationshipGroupCache
         if ( allocateRelGroupId )
             relGroupId.put( relGroupCachePosition, relationshipGroupIdAssigner.nextId() );
     }
-
+    
+    public int getCount( long relGroupCachePosition, Direction direction) throws BatchImportException
+    {
+        return IdFieldManipulator.getCount( getField( relGroupCachePosition, inOrOutIndex(direction) ) );
+    }
+    
     private long setField( long position, int index, long newValue ) throws BatchImportException
     {
         long physicalIndex = physicalIndex( position, index );
