@@ -10,9 +10,10 @@ import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
 
 public class StageContext
 {
-    public BatchInserterImplNew newBatchImporter;
-    public BatchInserterImpl batchInserter;
+    protected BatchInserterImplNew newBatchImporter;
+    protected BatchInserterImpl batchInserter;
     private Map<String, BatchInserterIndex> indexes;
+    protected MultiStage stages;
 
     public StageContext( BatchInserterImplNew newBatchImporter,
                          BatchInserterImpl batchImp,
@@ -23,6 +24,9 @@ public class StageContext
         this.indexes = indexes;
     }
 
+    public void setStages(MultiStage stages){
+        this.stages = stages;
+    }
     public static void dataExtract( ReadFileData input, CSVDataBuffer buf ) throws BatchImportException
     {
         try

@@ -1,7 +1,6 @@
 package org.neo4j.batchimport.importer.structs;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 
 import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.graphdb.Direction;

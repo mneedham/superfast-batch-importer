@@ -266,7 +266,14 @@ public class MultiStage
         }
         return true;
     }
-
+    private String statusMessage = null;
+    public String getStatusMessage(){
+        return statusMessage;
+    }
+    public synchronized void setStatusMessage (String msg){
+        statusMessage = msg;
+    }
+   
     public void pollResults( BatchInserterImpl batchInserter, String progressHeader ) throws Exception
     {
         long startTime = System.currentTimeMillis();
@@ -286,8 +293,10 @@ public class MultiStage
                 }
                 if ( waitCount % Constants.progressPollInterval == 0 && batchInserter.getNeoStore() != null )
                 {
+                    String status = statusMessage == null ? Utils.getMaxIds( batchInserter.getNeoStore(), true) : statusMessage;
+                    setStatusMessage (null);
                     System.out.print( progressHeader+": [" + waitCount / 1000 + "] "
-                            + Utils.getMaxIds( batchInserter.getNeoStore(), true ) + '\r' );
+                            + Utils.padRight( status, 80) + '\r' );
                 }
                 if ( batchInserter.getNeoStore() != null
                         && Utils.getTotalIds( batchInserter.getNeoStore() ) > billion * 1000000000 )

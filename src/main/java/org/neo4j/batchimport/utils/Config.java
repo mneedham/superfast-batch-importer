@@ -52,7 +52,7 @@ public class Config
         addConfigFromArgument( arguments, BATCH_IMPORT_GRAPH_DB, "graph.db", config );
         addConfigFromArgument( arguments, BATCH_IMPORT_NODES_FILES, null, config );
         addConfigFromArgument( arguments, BATCH_IMPORT_RELS_FILES, null, config );
-        addConfigFromArgument( arguments, BATCH_IMPORT_DEBUG_MODE, "debug", config );
+        addConfigFromArgument( arguments, BATCH_IMPORT_DEBUG_MODE, null, config );
         addConfigFromArgument( arguments, CHECK_CONSISTENCY, null, config );
 
         // TODO legacy indexes
@@ -86,6 +86,14 @@ public class Config
         if ( !config.containsKey( BATCH_IMPORT_GRAPH_DB ) )
         {
             throw new IllegalArgumentException( "Missing parameter for graphdb directory" );
+        }
+        if (!config.containsKey( BATCH_IMPORT_NODES_FILES ))
+        {
+            throw new IllegalArgumentException( "Missing parameter for nodes file" );
+        }
+        if (!config.containsKey( BATCH_IMPORT_RELS_FILES ))
+        {
+            throw new IllegalArgumentException( "Missing parameter for relationship file" );
         }
     }
 

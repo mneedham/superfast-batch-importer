@@ -84,10 +84,10 @@ public class Utils
         }
         if ( writeRate )
         {
-            int memory = (int)Runtime.getRuntime().freeMemory() / Constants.mb;
+            int memory = safeCastLongToInt(Runtime.getRuntime().freeMemory() / Constants.mb);
             String memoryMessage = Integer.toString( memory );
-            if (memory < 50)
-                memoryMessage += "  LOW MEMORY - Increase memory (using -Xms and -Xmx)";
+            //if (memory < 50)
+            //    memoryMessage += "  LOW MEMORY - Increase memory (using -Xms and -Xmx)";
             
             return ("Property[" + highIds[0] + "] Node[" + highIds[1] + "] Relationship[" + highIds[2] + "] Label[" +
                     highIds[3] + "] Disk[" + diskNew / Constants.mb + " mb, " + rate + " mb/sec] FreeMem[" + memoryMessage +" mb]");
@@ -211,5 +211,10 @@ public class Utils
     public static void printStatusLine(String msg){
         System.out.print( msg + '\r' );
     }
-
+    public static String padRight(String s, int n) {
+        return String.format("%1$-" + n + "s", s);  
+   }
+    public static String padLeft(String s, int n) {
+        return String.format("%1$" + n + "s", s);  
+    }
 }

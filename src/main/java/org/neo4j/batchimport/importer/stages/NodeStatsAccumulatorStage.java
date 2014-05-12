@@ -16,27 +16,14 @@ public enum NodeStatsAccumulatorStage implements Stage
             },
     Stage1
             {
+                int relsProcessed = 0;
                 @Override
                 public void execute( StageContext stageContext, ReadFileData input, CSVDataBuffer buf ) throws BatchImportException
                 {
                     BatchInserterImplNew db = stageContext.newBatchImporter;
                     db.accumulateNodeCount( buf );
-                    //db.getNodeCache().calculateDenseNodeThreshold( (int)db.getNeoStore().getRelationshipTypeStore().getHighId() );
+                    relsProcessed += buf.getCurEntries();
+                    stageContext.stages.setStatusMessage( "Processed ["+relsProcessed +"] relationships");
                 }
             }
 }
-/*
-{
-    Accumulate
-    {
-        public void execute(Config config, BatchInserterImplNew db, Reader nodesInput) throws BatchImportException
-        {
-            ReadFileData input =  new ReadFileData( new BufferedReader( nodesInput, Constants.BUFFERED_READER_BUFFER ),
-                    config.getDelimChar(), 3, config.quotesEnabled() );
-           
-            db.accumulateNodeCount( input );
-            db.getNodeCache().calculateDenseNodeThreshold( (int)db.getNeoStore().getRelationshipTypeStore().getHighId() );
-        }
-    }
-}
-*/

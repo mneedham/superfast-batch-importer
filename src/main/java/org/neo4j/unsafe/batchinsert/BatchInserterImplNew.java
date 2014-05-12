@@ -305,6 +305,11 @@ public class BatchInserterImplNew extends BatchInserterImpl
             {
                 rel.setFirstPrevRel( result );
                 rel.setSecondPrevRel( result );
+                if ( result == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                {
+                    rel.setFirstInFirstChain( true );
+                    rel.setFirstInSecondChain( true );
+                }
             }
             return result;
         }
@@ -333,21 +338,36 @@ public class BatchInserterImplNew extends BatchInserterImpl
             {
                 long previousRel = nodeCache.getRelationshipGroupCache().put( relGroupIndex, rel.getType(), direction,
                         rel.getId(), forwardScan );
-                if ( !forwardScan )
+                if ( forwardScan )
                 {
                     if ( direction == Direction.OUTGOING )
+                        rel.setFirstNextRel( previousRel );
+                    else
+                        rel.setSecondNextRel( previousRel );
+                }
+                else
+                { //backward scan
+                    if ( direction == Direction.OUTGOING )
                     {
-                        rel.setFirstPrevRel( nodeCache.getRelationshipGroupCache().getCount( nodeCache.get( nodeId ),
-                                direction ) );
                         if ( previousRel == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                        { // first relationship
+                            rel.setFirstPrevRel( nodeCache.getRelationshipGroupCache().getCount(
+                                    nodeCache.get( nodeId ), direction ) );
                             rel.setFirstInFirstChain( true );
+                        }
+                        else
+                            rel.setFirstPrevRel( previousRel );
                     }
                     else
                     {
-                        rel.setSecondPrevRel( nodeCache.getRelationshipGroupCache().getCount( nodeCache.get( nodeId ),
-                                direction ) );
                         if ( previousRel == Record.NO_NEXT_RELATIONSHIP.intValue() )
+                        { // first relationship
+                            rel.setSecondPrevRel( nodeCache.getRelationshipGroupCache().getCount(
+                                    nodeCache.get( nodeId ), direction ) );
                             rel.setFirstInSecondChain( true );
+                        }
+                        else
+                            rel.setSecondPrevRel( previousRel );
                     }
                 }
                 return previousRel;
@@ -635,7 +655,6 @@ public class BatchInserterImplNew extends BatchInserterImpl
         else
         {
             nodeCache.cleanIds( false );
-            System.out.println( "Cleaned IDs" );
         }
         if ( nodeCache.getRelationshipGroupCache() != null )
             nodeCache.getRelationshipGroupCache().clearAllIDs();
@@ -717,13 +736,21 @@ public class BatchInserterImplNew extends BatchInserterImpl
 
     public void accumulateNodeCount( CSVDataBuffer buffer ) throws BatchImportException
     {
-        for ( int index = 0; index < buffer.getCurEntries(); index++ )
+        try
         {
-            long firstNode = buffer.getLong( index, 0 );
-            long secondNode = buffer.getLong( index, 1 );
-            nodeCache.incrementCount( firstNode );
-            nodeCache.incrementCount( secondNode );
-            createRelTypeId( buffer.getString( index, 2 ) );
+            for ( int index = 0; index < buffer.getCurEntries(); index++ )
+            {
+                long firstNode = buffer.getLong( index, 0 );
+                long secondNode = buffer.getLong( index, 1 );
+                nodeCache.incrementCount( firstNode );
+                nodeCache.incrementCount( secondNode );
+                createRelTypeId( buffer.getString( index, 2 ) );
+            }
+        }
+        catch ( Exception e )
+        {
+            e.printStackTrace();
+            throw new BatchImportException( "[Error in accumulateNodeCount - " + e.getMessage() + "]" );
         }
     }
 

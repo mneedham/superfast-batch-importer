@@ -152,13 +152,6 @@ public abstract class AbstractDataBuffer
         this.moreData = true;
     }
 
-    private long getLong( int[][] record, int colIndex )
-    {
-        int[] valIndex = record[colIndex];
-        String val = rawStrBuf.substring( valIndex[0], valIndex[1] );
-        return Long.parseLong( val.trim() );
-    }
-
     public long getLong( int rowIndex, int colIndex )
     {
         int[] valIndex = records[rowIndex][colIndex];

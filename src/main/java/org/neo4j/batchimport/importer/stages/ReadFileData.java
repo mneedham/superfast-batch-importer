@@ -98,16 +98,6 @@ public class ReadFileData extends AbstractLineData
 
     String[] prevLine = null;
 
-    private int getlength( String[] strArray )
-    {
-        int length = 0;
-        for ( String str : strArray )
-        {
-            length += str.length();
-        }
-        return length;
-    }
-
     protected synchronized boolean csvFillBuffer( CSVDataBuffer buf ) throws IOException
     {
         int[][] record = new int[buf.getNumColumns()][2];
@@ -194,7 +184,6 @@ public class ReadFileData extends AbstractLineData
         try
         {
             int propertyCount = 0;
-            int notnull = 0;
             Object[] properties = new Object[buf.getRecords()[index].length * 2];
             for ( int i = 0; i < buf.getRecords()[index].length; i++ )
             {
@@ -202,7 +191,6 @@ public class ReadFileData extends AbstractLineData
                 {
                     continue;
                 }
-                notnull++;
                 if ( i < offset || i == explicitLabelId )
                 {
                     continue;
@@ -229,7 +217,7 @@ public class ReadFileData extends AbstractLineData
     {
         if ( !hasIndex )
         {
-            return Collections.EMPTY_MAP;
+            return Collections.emptyMap();
         }
         Map<String, Map<String, Object>> indexData = new HashMap<String, Map<String, Object>>();
         for ( int column = offset; column < headers.length; column++ )
@@ -260,7 +248,7 @@ public class ReadFileData extends AbstractLineData
         {
             if ( !hasIndex )
             {
-                return Collections.EMPTY_MAP;
+                return Collections.emptyMap();
             }
             Map<String, Map<String, Object>> indexData = new HashMap<String, Map<String, Object>>();
             for ( int column = offset; column < headers.length; column++ )

@@ -24,7 +24,6 @@ import org.neo4j.batchimport.importer.structs.Constants;
 import org.neo4j.batchimport.importer.structs.Constants.ImportStageState;
 import org.neo4j.batchimport.importer.structs.DiskRecordsBuffer;
 import org.neo4j.batchimport.importer.structs.NodesCache;
-import org.neo4j.batchimport.importer.structs.RelationshipGroupCache;
 import org.neo4j.batchimport.importer.utils.Utils;
 import org.neo4j.batchimport.index.MapDbCachingIndexProvider;
 import org.neo4j.batchimport.utils.Config;
@@ -42,7 +41,6 @@ import org.neo4j.unsafe.batchinsert.BatchInserterImplNew;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndex;
 import org.neo4j.unsafe.batchinsert.BatchInserterIndexProvider;
 
-import static org.junit.Assert.assertTrue;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.EXACT_CONFIG;
 import static org.neo4j.index.impl.lucene.LuceneIndexImplementation.FULLTEXT_CONFIG;
@@ -106,7 +104,17 @@ public class Importer
         System.err.println( "Neo4j Data Importer" );
         System.err.println( Config.usage() );
         System.err.println();
-        final Config config = Config.convertArgumentsToConfig( args );
+        Config config = null;
+        try {
+            config = Config.convertArgumentsToConfig( args );
+        } catch (IllegalArgumentException ie){
+            StringBuilder params = new StringBuilder();
+            for (String str : args)
+                params.append( str + " ");
+            System.err.println("Illegal param: " + ie.getMessage() +"["+params+"]" );
+            System.err.println( Config.usage() );
+            return;
+        }
         File graphDb = new File( config.getGraphDbDirectory() );
         if ( graphDb.exists() && !config.keepDatabase() )
         {
@@ -279,7 +287,9 @@ public class Importer
 
     private MultiStage setupStages() throws BatchImportException
     {
-        MultiStage importStages = new MultiStage( new StageContext( db, db, indexes ) );
+        StageContext stageContext = new StageContext( db, db, indexes );
+        MultiStage importStages = new MultiStage( stageContext );
+        stageContext.setStages( importStages );
         WriterStages writerStages = setWriterStage( importStages );
         db.setDiskBlockingQ( writerStages.getDiskBlockingQ() );
         importStages.setDataBuffers( writerStages.getDiskRecordsCache() );
@@ -322,11 +332,18 @@ public class Importer
 
     private void importNew( Reader reader, int offset, String message ) throws Exception
     {
-        ReadFileData input = new ReadFileData( new BufferedReader( reader, Constants.BUFFERED_READER_BUFFER ),
-                config.getDelimChar(), offset, config.quotesEnabled() );
-        db.setDataInput( input );
-        importStages.start( input );
-        importStages.pollResults( db, message );
+        try
+        {
+            ReadFileData input = new ReadFileData( new BufferedReader( reader, Constants.BUFFERED_READER_BUFFER ),
+                    config.getDelimChar(), offset, config.quotesEnabled() );
+            db.setDataInput( input );
+            importStages.start( input );
+            importStages.pollResults( db, message );
+        }
+        catch ( Exception e )
+        {
+            throw new BatchImportException( "[ImportNew failed]["+message+"]["+e.getMessage()+"]", e );
+        }
     }
 
     private void setupStagesForNodes() throws BatchImportException
@@ -338,7 +355,7 @@ public class Importer
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Nodes setup failed]", e );
+            throw new BatchImportException( "[Nodes setup failed]["+e.getMessage()+"]", e );
         }
     }
 
@@ -352,7 +369,7 @@ public class Importer
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Relationship setup failed]", e );
+            throw new BatchImportException( "[Relationship setup failed]["+e.getMessage()+"]", e );
         }
     }
 
@@ -365,7 +382,7 @@ public class Importer
         }
         catch ( Exception e )
         {
-            throw new BatchImportException( "[Relationship setup failed]", e );
+            throw new BatchImportException( "[RelationshipPrescan setup failed]["+e.getMessage()+"]", e );
         }
     }
 
@@ -409,9 +426,9 @@ public class Importer
             try
             {
                 ConsistencyCheckService.Result result = new ConsistencyCheckService().runFullConsistencyCheck( config
-                        .getGraphDbDirectory(), new org.neo4j.kernel.configuration.Config( specifiedProperties, GraphDatabaseSettings.class,
-                        ConsistencyCheckSettings.class ), ProgressMonitorFactory.textual( System.err ),
-                        StringLogger.SYSTEM );
+                        .getGraphDbDirectory(), new org.neo4j.kernel.configuration.Config( specifiedProperties,
+                        GraphDatabaseSettings.class, ConsistencyCheckSettings.class ), ProgressMonitorFactory
+                        .textual( System.err ), StringLogger.SYSTEM );
             }
             catch ( ConsistencyCheckIncompleteException ce )
             {

@@ -122,8 +122,9 @@ public class ImportWorker extends java.lang.Thread
             }
             catch ( Exception e )
             {
-                Utils.SystemOutPrintln( "Thread exception: in getBuffer:" + e.getMessage() );
-                throw new BatchImportException(e.getMessage());
+                String errMsg = "Exception in getBuffer:" +e.getStackTrace()[2];
+                Utils.SystemOutPrintln( errMsg + e.getMessage() );
+                throw new BatchImportException( errMsg + e.getMessage() );
             }
             if ( buffer == null )
             {
@@ -146,10 +147,9 @@ public class ImportWorker extends java.lang.Thread
         catch ( Exception e )
         {
             this.excep = e;
-            e.printStackTrace();
             Utils.SystemOutPrintln( "Invoke stage method failed:" + name + ":" + e.getMessage() + ":"
                     + this.stages.getBufferQ().getThreadCount( stageIndex ) );
-            throw new BatchImportException(e.getMessage());
+            throw new BatchImportException( e.getMessage() );
         }
     }
 
@@ -203,7 +203,7 @@ public class ImportWorker extends java.lang.Thread
             this.excep = e;
             e.printStackTrace();
             Utils.SystemOutPrintln( "Import worker:" + name + ":" + e.getMessage() );
-            throw new RuntimeException(e.getMessage());
+            throw new RuntimeException( e.getMessage() );
         }
     }
 
