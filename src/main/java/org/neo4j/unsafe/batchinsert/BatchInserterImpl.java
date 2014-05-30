@@ -773,7 +773,8 @@ public class BatchInserterImpl implements BatchInserter, Provider<PropertyStore>
     protected void setNodeLabels( NodeRecord nodeRecord, Label... labels )
     {
         NodeLabels nodeLabels = parseLabelsField( nodeRecord );
-        getNodeStore().updateDynamicLabelRecords( nodeLabels.put( getOrCreateLabelIds( labels ), getNodeStore() ) );
+        getNodeStore().updateDynamicLabelRecords( nodeLabels.put( getOrCreateLabelIds( labels ), getNodeStore(),
+        		getNodeStore().getDynamicLabelStore() ) );
     }
 
     private long[] getOrCreateLabelIds( Label[] labels )

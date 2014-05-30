@@ -28,6 +28,7 @@ public class Config
     public static final String BATCH_IMPORT_CSV_DELIM = "batch_import.csv.delim";
     public static final String ARRAY_SEPARATOR_CONFIG = "batch_array_separator";
     public static final String BATCH_IMPORT_DEBUG_MODE = "debug";
+    public static final String BATCH_IMPORT_MAX_CPU = "MaxCPU";
     public static final String CHECK_CONSISTENCY = "check";
     public static String ARRAYS_SEPARATOR = ",";
 
@@ -54,6 +55,7 @@ public class Config
         addConfigFromArgument( arguments, BATCH_IMPORT_RELS_FILES, null, config );
         addConfigFromArgument( arguments, BATCH_IMPORT_DEBUG_MODE, null, config );
         addConfigFromArgument( arguments, CHECK_CONSISTENCY, null, config );
+        addConfigFromArgument( arguments, BATCH_IMPORT_MAX_CPU, "-1", config );
 
         // TODO legacy indexes
 

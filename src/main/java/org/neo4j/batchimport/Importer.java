@@ -288,7 +288,8 @@ public class Importer
     private MultiStage setupStages() throws BatchImportException
     {
         StageContext stageContext = new StageContext( db, db, indexes );
-        MultiStage importStages = new MultiStage( stageContext );
+        int maxCPU = config.get("MaxCPU") == null ? -1 : Integer.parseInt(config.get("MaxCPU"));
+        MultiStage importStages = new MultiStage( stageContext, maxCPU);
         stageContext.setStages( importStages );
         WriterStages writerStages = setWriterStage( importStages );
         db.setDiskBlockingQ( writerStages.getDiskBlockingQ() );

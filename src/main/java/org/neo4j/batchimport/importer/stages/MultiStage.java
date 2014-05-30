@@ -33,10 +33,12 @@ public class MultiStage
     private StageContext stageContext;
     private WriterStages writerStages;
     private String threadException = null;
+    private int maxCPU = -1;
 
-    public MultiStage( StageContext stageContext )
+    public MultiStage( StageContext stageContext, int maxCPU )
     {
         this.stageContext = stageContext;
+        this.maxCPU = maxCPU;
     }
 
     public ImportStageState getState()
@@ -58,7 +60,8 @@ public class MultiStage
     {
         stageState = mode;
         this.numStages = methods.length;
-        threadCount = Math.max( Runtime.getRuntime().availableProcessors(), numStages );
+        int cpus = maxCPU == -1 ? Runtime.getRuntime().availableProcessors() : maxCPU;
+        threadCount = Math.max(threadCount, Math.max( cpus , numStages ));
         if ( importWorkers == null )
             importWorkers = new ImportWorker[threadCount];
         stageRunData = new RunData[numStages][threadCount];
