@@ -5,43 +5,55 @@ You can ask [Neo Technology](http://neotechnology.com) about a different licensi
 
 __Works with Neo4j 2.1.1__
 
-*Note: The initial reference node is gone in Neo4j 2.0, so node-id numbering changed, see below*
+*NOTE: The initial reference node is gone in Neo4j 2.0, so node-id numbering changed, see below*
 
 ## Binary Download
 
 To simply use it (no source/git/maven required):
 * [download zip](http://dist.neo4j.org/batch-import/batch_importer_21.zip)
 * unzip
-* run `import.sh -db-directory test.db -nodes nodes.csv -rels rels.csv` (on Windows: `import.bat`)
-* after the import point your `/path/to/neo4j/conf/neo4j-server.properties` to this `test.db` directory,
-  or copy the data over to your server `cp -r test.db/* /path/to/neo4j/data/graph.db/`
 
-You provide one **tab separated** csv file for nodes and one for relationships (optionally more for indexes)
+*NOTE: You have to provide at least one **tab separated** CSV file for nodes and at least one for relationships.*
+
+## Execution
+
+Just use the provided shell script `import.sh` or `import.bat` on Windows
+
+    import.sh -db-directory test.db -nodes nodes.csv -rels rels.csv
 
 Example data for the files is provided in the `sample` directory. Test the importer using:
 
-`import.sh -db-directory test.db -nodes sample/nodes.csv -rels sample/rels.csv`
+    import.sh -db-directory test.db -nodes sample/nodes.csv -rels sample/rels.csv
 
-## File format
+## Use with Neo4j Server
+
+* point to the sever db: `import.sh -db-directory /path/to/neo4j/data/graph.db -nodes nodes.csv -rels rels.csv`
+* or, after the import point your server config (`/path/to/neo4j/conf/neo4j-server.properties`) to the path of this `test.db` directory
+* or copy or move the created data over to your server e.g. `cp -r test.db/* /path/to/neo4j/data/graph.db/`
+
+## CSV file format
 
 * **tab separated** csv files
+* for non-ascii characters make sure to add `-Dfile.encoding=UTF-8` to the commandline arguments
+* csv files can be zipped individually as *.gz or *.zip
+* multiple files for nodes and rels, comma separated, without spaces like "node1.csv,node2.csv"
+* If only one node file is initially imported, the file-line number corresponds to the node-id (*starting with 0*)
+
+### Header Format
+
 * Property names in first row.
-* If only one file is initially imported, the row number corresponds to the node-id (*starting with 0*)
 * Property values not listed will not be set on the nodes or relationships.
-* Optionally property fields can have a type (defaults to String) indicated with name:type where type is one of
+* Optionally property fields can have a type (defaults to String) indicated with `name:type` where type is one of
   (int, long, float, double, boolean, byte, short, char, string). The string value is then converted to that type.
   Conversion failure will result in abort of the import operation.
 * There is a separate "label" type, which should be used for relationship types and/or node labels, (`labels:label`)
 * Property fields may also be arrays by adding "_array" to the types above and separating the data with commas.
-* for non-ascii characters make sure to add `-Dfile.encoding=UTF-8` to the commandline arguments
+* you can specify concrete, externally provided node-id's with: `i:id`, both in the node and relationship-files
 * Optionally automatic indexing of properties can be configured with a header like `name:string:users` and a configured index in `batch.properties` like `batch_import.node_index=exact`
   then the property `name` will be indexed in the `users` index for each row with a value there
-* multiple files for nodes and rels, comma separated, without spaces like "node1.csv,node2.csv"
-* you can specify concrete, externally provided node-id's with: `i:id`, both in the node and relationship-files
-* csv files can be zipped individually as *.gz or *.zip
+
 
 ## Examples
-
 
 ````sh
 $ ./generate.sh
@@ -97,40 +109,6 @@ Start	End	Type	Property	Counter:long
 92	54	ONE	ONE	8
 54	99	THREE	ONE	9
 ````
-
-
-## Execution
-
-Just use the provided shell script `import.sh` or `import.bat` on Windows
-
-    import.sh -db-directory test.db -nodes nodes.csv -rels rels.csv
-
-
-### For Developers
-
-If you want to work on the code and run the importer after making changes:
-
-    mvn clean compile exec:java -Dexec.mainClass="org.neo4j.batchimport.Importer" -Dexec.args="-db-directory test.db -nodes nodes.csv -rels rels.csv"
-    
-    or
-    
-    java -server -Dfile.encoding=UTF-8 -Xmx4G -jar target/batch-import-jar-with-dependencies.jar -db-directory test.db -nodes nodes.csv -rels rels.csv
-
-
-    $ rm -rf target/db
-    $ mvn clean compile assembly:single
-    [INFO] Scanning for projects...
-    [INFO] ------------------------------------------------------------------------
-    [INFO] Building Simple Batch Importer
-    [INFO]    task-segment: [clean, compile, assembly:single]
-    [INFO] ------------------------------------------------------------------------
-    ...
-    [INFO] Building jar: /Users/mh/java/neo/batchimport/target/batch-import-jar-with-dependencies.jar
-    [INFO] ------------------------------------------------------------------------
-    [INFO] BUILD SUCCESSFUL
-    [INFO] ------------------------------------------------------------------------
-    $ java -server -Xmx4G -jar target/batch-import-jar-with-dependencies.jar -db-directory test.db -nodes nodes.csv -rels rels.csv
-    Physical mem: 16384MB, Heap size: 3640MB
 
 ## Parameters
 
@@ -215,6 +193,32 @@ batch_import.mapdb_cache.disable=true
 ````
 batch_import.keep_db=true
 ````
+
+### For Developers
+
+If you want to work on the code and run the importer after making changes:
+
+    mvn clean compile exec:java -Dexec.mainClass="org.neo4j.batchimport.Importer" -Dexec.args="-db-directory test.db -nodes nodes.csv -rels rels.csv"
+    
+    or
+    
+    java -server -Dfile.encoding=UTF-8 -Xmx4G -jar target/batch-import-jar-with-dependencies.jar -db-directory test.db -nodes nodes.csv -rels rels.csv
+
+
+    $ rm -rf target/db
+    $ mvn clean compile assembly:single
+    [INFO] Scanning for projects...
+    [INFO] ------------------------------------------------------------------------
+    [INFO] Building Simple Batch Importer
+    [INFO]    task-segment: [clean, compile, assembly:single]
+    [INFO] ------------------------------------------------------------------------
+    ...
+    [INFO] Building jar: /Users/mh/java/neo/batchimport/target/batch-import-jar-with-dependencies.jar
+    [INFO] ------------------------------------------------------------------------
+    [INFO] BUILD SUCCESSFUL
+    [INFO] ------------------------------------------------------------------------
+    $ java -server -Xmx4G -jar target/batch-import-jar-with-dependencies.jar -db-directory test.db -nodes nodes.csv -rels rels.csv
+    Physical mem: 16384MB, Heap size: 3640MB
 
 ## Utilities
 
