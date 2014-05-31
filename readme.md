@@ -5,7 +5,7 @@ You can ask [Neo Technology](http://neotechnology.com) about a different licensi
 
 __Works with Neo4j 2.1.1__
 
-** Note: The initial reference node is gone in Neo4j 2.0, so node-id numbering changed, see below**
+*Note: The initial reference node is gone in Neo4j 2.0, so node-id numbering changed, see below*
 
 ## Binary Download
 
@@ -16,7 +16,9 @@ To simply use it (no source/git/maven required):
 
 You provide one **tab separated** csv file for nodes and one for relationships (optionally more for indexes)
 
-Example data for the files is a small family network
+Example data for the files is provided in the `sample` directory. Test the importer using:
+
+`import.sh -db-directory test.db -nodes sample/nodes.csv -rels sample/rels.csv`
 
 ## File format
 
