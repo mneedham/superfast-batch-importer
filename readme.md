@@ -10,7 +10,7 @@ __Works with Neo4j 2.1.1__
 ## Binary Download
 
 To simply use it (no source/git/maven required):
-* [download zip](s3://dist.neo4j.org/batch-import/batch_importer_21.zip)
+* [download zip](http://dist.neo4j.org/batch-import/batch_importer_21.zip)
 * unzip
 * run `import.sh -db-directory test.db -nodes nodes.csv -rels rels.csv` (on Windows: `import.bat`)
 
@@ -219,19 +219,21 @@ batch_import.keep_db=true
     ./generate.sh dir=<> nodes=<> relsPerNode=<> relTypes=<> sorted maxLabels=<> relTypes=<> columns=<> \
                   propsPerNode=<> propsPerRel=<> maxPropSize=<>:<> startNodeId=<>
 
-<> --> user input
+     <> means user input
+
 Note that all these parameters can in any order and is not case sensitive.
-dir 		- location where nodes.csv and rels.csv is generated
-nodes 		- number of nodes
-relsPerNode - number of relationships per node
-relTypes	- number of relationship types
-maxLabels	- maximum number of labels 
-sorted		- sorted or unsorted data (default is unsorted)
-columns		- a tab separated column names
-propsPerNode- properties per node
-propsPerRel	- properties per relationship
-maxPropSize	- x:y, x is maximum size in bytes, y is percentage of properties > x in size
-startNodeId	- the lowest node id. Useful in creating multiple node and relationship files.
+
+* dir 		- location where nodes.csv and rels.csv is generated
+* nodes 		- number of nodes
+* relsPerNode - number of relationships per node
+* relTypes	- number of relationship types
+* maxLabels	- maximum number of labels
+* sorted		- sorted or unsorted data (default is unsorted)
+* columns		- a tab separated column names
+* propsPerNode- properties per node
+* propsPerRel	- properties per relationship
+* maxPropSize	- x:y, x is maximum size in bytes, y is percentage of properties > x in size
+* startNodeId	- the lowest node id. Useful in creating multiple node and relationship files.
 
 for instance:
 
