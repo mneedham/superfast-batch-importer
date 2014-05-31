@@ -17,3 +17,4 @@ gc.log
 *.zip
 zip19.sh
 data/
+.classpath

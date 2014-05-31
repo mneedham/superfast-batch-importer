@@ -7,25 +7,21 @@ import java.text.DecimalFormat;
 import java.util.HashSet;
 import java.util.Random;
 
-import org.junit.Ignore;
-
 /**
  * @author mh
  * @since 13.01.12
  */
-@Ignore
 public class DataGenerator
 {
     static int MAX_SHORT_STRING = -1;
     static int MAX_SHORT_STRING_SELECT = 0;
     private static int MAX_LABELS = 100;
-    private static int MAX_ID = 1000000;
     private static final int NODES = 1 * 1000 * 1000;
     private static final int RELS_PER_NODE = 10;
     private static final String[] TYPES = {"ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE",
             "TEN"};
     private static Random rnd = new Random();
-    static String dir = null;
+    static String dir = ".";
     static int relsPerNode = RELS_PER_NODE;
     static int nodes = NODES;
     static String[] relTypes = TYPES;
@@ -40,7 +36,7 @@ public class DataGenerator
 
     public static void main( String... args ) throws IOException
     {
-        System.out.println( "Usage: TestDataGenerator NODES=n1 relsPerNode=n2 relTypes=n3 sorted" );
+        System.out.println( "Usage: TestDataGenerator nodes=1000000 relsPerNode=50 relTypes=KNOWS,FOLLOWS propsPerNode=5 propsPerRel=2" );
         long relCount = 0, time = System.currentTimeMillis();
         for ( String arg : args )
         {
@@ -124,14 +120,14 @@ public class DataGenerator
         String relHeader = "Start\tEnd\tType\t" + getPropsHeader( propsPerRel, "Property" ) + "\tCounter:long\n";
         //System.out.println("Using: TestDataGenerator "+nodes+" "+relsPerNode+" "+ Utils.join(relTypes, ",
         // ")+" "+(sorted?"sorted":""));
-        File dirFile = new File( dir + File.separator + "nodes.csv" );
-        FileOutputStream nodeFile = new FileOutputStream( dirFile );
-        nodeFile.write( nodeHeader.getBytes() );
-        FileOutputStream relFile = new FileOutputStream( dir + File.separator + "rels.csv" );
-        relFile.write( relHeader.getBytes() );
-        relCount = generate( nodeFile, relFile, nodes, startNodeId, relsPerNode, relTypes, sorted );
-        nodeFile.close();
-        relFile.close();
+        File nodeFile = new File( dir , "nodes.csv" );
+        FileOutputStream nodeOutputStream = new FileOutputStream( nodeFile );
+        nodeOutputStream.write(nodeHeader.getBytes());
+        FileOutputStream relOutputStream = new FileOutputStream( new File(dir , "rels.csv") );
+        relOutputStream.write(relHeader.getBytes());
+        relCount = generate( nodeOutputStream, relOutputStream, nodes, startNodeId, relsPerNode, relTypes, sorted );
+        nodeOutputStream.close();
+        relOutputStream.close();
         long seconds = (System.currentTimeMillis() - time) / 1000;
         System.out.println( "Creating " + nodes + " Nodes and " + relCount + (sorted ? " sorted " : "") + " " +
                 "Relationships with [" + propCount + ":" + longPropCount + "] took " + seconds + " seconds." );
@@ -258,7 +254,7 @@ public class DataGenerator
                 tmp = Math.abs( (rnd.nextInt() % (10 * count)) );
             }
 
-            String tmpStr = reference == null ? EnglishNumberToWords.convert( tmp ) : reference[tmp];
+            String tmpStr = reference == null ? EnglishNumberToWords.convert(tmp) : reference[tmp];
             //if (tmpStr.length() > MAX_SHORT_STRING)
             //	tmpStr = tmpStr.substring(0, MAX_SHORT_STRING-1);
             if ( !tmpStr.isEmpty() )
